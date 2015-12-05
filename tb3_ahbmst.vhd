@@ -33,15 +33,16 @@ use gaisler.custom.all;
 library grlib;
 use grlib.amba.all;
 use grlib.testlib.all;
+use grlib.devices.all;
  
 -- Uncomment the following library declaration if using
 -- arithmetic functions with Signed or Unsigned values
 --USE ieee.numeric_std.ALL;
  
-ENTITY tb_noc IS
-END tb_noc;
+ENTITY tb3_ahbmst IS
+END tb3_ahbmst;
  
-ARCHITECTURE ahb_write_read OF tb_noc IS 
+ARCHITECTURE test_virtioc OF tb3_ahbmst IS 
  
     -- Component Declaration for the Unit Under Test (UUT)
     
@@ -53,6 +54,8 @@ ARCHITECTURE ahb_write_read OF tb_noc IS
    signal ahbso : ahb_slv_out_vector := (others => ahbs_none);
    signal ahbmi : ahb_mst_in_type;
    signal ahbmo : ahb_mst_out_vector := (others => ahbm_none);
+	signal dmai : ahb_dma_in_type := dmai_none;
+   signal dmao : ahb_dma_out_type;
 	signal ctrl  : ahbtb_ctrl_type;
 	--signal ctrli : ahbtbm_ctrl_in_type;
 	--signal ctrlo : ahbtbm_ctrl_out_type;
@@ -61,23 +64,31 @@ ARCHITECTURE ahb_write_read OF tb_noc IS
    constant clk_period : time := 20 ns;
  
 BEGIN
- 
+
 	-- Instantiate the Unit Under Test (UUT)
    uut: top_noc
 	generic map (
-    hindex => 7,
+    hindex => 0,
     haddr => 16#400#,
     hmask => 16#fff#)
-    port map (rstn, clkm, ahbsi, ahbso(7));
+    port map (rstn, clkm, ahbsi, ahbso(0));
 		  
 	ahb0 : ahbctrl       -- AHB arbiter/multiplexer
 				generic map (defmast => 0, split => 0, 
 									rrobin => 1, ioaddr => 16#800#,
-									ioen => 1, nahbm => 1, nahbs => 16)
+									ioen => 1, nahbm => 2, nahbs => 16)
 				port map (rstn, clkm, ahbmi, ahbmo, ahbsi, ahbso);	 
 
-	ahbtbm0 : ahbtbm
-		generic map(hindex => 0) -- AMBA master index 0
+	ahbmst1 : ahbmst
+		generic map (hindex => 1, hirq => 1, venid => VENDOR_GAISLER,
+                 devid => GAISLER_LEON3, version => 0,
+                 chprot => 3, incaddr => 0)
+		port map(rstn, clkm, dmai, dmao, ahbmi, ahbmo(1));
+
+   ahbtbm0 : ahbtbm
+		generic map(hindex => 0, hirq => 0, venid => VENDOR_GAISLER,
+                 devid => GAISLER_LEON3, version => 0,
+                 chprot => 3, incaddr => 0) -- AMBA master index 0
 		port map(rstn, clkm, ctrl.i, ctrl.o, ahbmi, ahbmo(0));
 
    -- Clock process definitions
@@ -91,39 +102,41 @@ BEGIN
  
    -- Stimulus process
    stim_proc: process
-   begin	
+   begin
 		rstn <= '0';
 		wait for 100 ns;
 		rstn <= '1';
-		wait for 60 ns;
-		rstn <= '1';
+		--wait for 60 ns;
+		--rstn <= '1';
 		wait;
 	end process;
 	
 	ahb_proc: process
 	begin
-		wait for 40 ns;
+		--wait for 40 ns;
 		-- Initialize the control signals
-		ahbtbminit(ctrl);
-      wait for 100 ns;	
-		ahbwrite(x"40000004", x"98700000", "10", 2, false , ctrl);
+		ahbtbminit(ctrl); -- at 100ns
+      wait for 100 ns;
 		wait until clkm'event and clkm='1';
-		ahbread (x"40000068", x"98700000", "10", 2, false , ctrl);
-		wait until clkm'event and clkm='1';
-		ahbwrite(x"40000000", x"12300000", "10", 2, false , ctrl);
-		wait until clkm'event and clkm='1';
+		dmai.address <= x"4000000c";
+		dmai.wdata(31 downto 0) <= x"f1234000";
+		dmai.burst <= '0';
+		dmai.write <= '1';
+		dmai.busy <= '0';
+		dmai.irq <= '0';
+		dmai.size <= "010";
 		--wait until clkm'event and clkm='1';
-		ahbtbmidle(false, ctrl);
-		wait for 100 ns;
-		wait for 100 ns;
-		ahbread (x"40000004", x"98700000", "10", 2, false , ctrl);
+		dmai.start <= '1';
 		wait until clkm'event and clkm='1';
-		ahbread (x"40000000", x"12300000", "10", 2, false , ctrl);
+		wait until dmao.active = '1';
+		wait until clkm'event and clkm='1';
+		dmai.start <= '0';
+		-- ahbtbm0
+		ahbread(x"40000014", x"f1234000", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
 		ahbtbmidle(false, ctrl);
-		wait for 100 ns;
 		-- Stop simulation
-		ahbtbmdone(0, ctrl); 
+		--ahbtbmdone(0, ctrl); 
       wait;
    end process;
 

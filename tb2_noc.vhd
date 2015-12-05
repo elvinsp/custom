@@ -38,10 +38,10 @@ use grlib.testlib.all;
 -- arithmetic functions with Signed or Unsigned values
 --USE ieee.numeric_std.ALL;
  
-ENTITY tb_noc IS
-END tb_noc;
+ENTITY tb2_noc IS
+END tb2_noc;
  
-ARCHITECTURE ahb_write_read OF tb_noc IS 
+ARCHITECTURE noc_simple_transfer OF tb2_noc IS 
  
     -- Component Declaration for the Unit Under Test (UUT)
     
@@ -106,19 +106,32 @@ BEGIN
 		-- Initialize the control signals
 		ahbtbminit(ctrl);
       wait for 100 ns;	
-		ahbwrite(x"40000004", x"98700000", "10", 2, false , ctrl);
+		ahbwrite(x"40000014", x"11111111", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
-		ahbread (x"40000068", x"98700000", "10", 2, false , ctrl);
+		ahbwrite(x"40000018", x"22222222", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
-		ahbwrite(x"40000000", x"12300000", "10", 2, false , ctrl);
+		ahbwrite(x"4000001c", x"44444444", "10", 2, false , ctrl);
+		wait until clkm'event and clkm='1';
+		ahbwrite(x"40000020", x"88888888", "10", 2, false , ctrl);
+		wait until clkm'event and clkm='1';
+		ahbwrite(x"40000024", x"aaaaaaaa", "10", 2, false , ctrl);
+		wait until clkm'event and clkm='1';
+		ahbwrite(x"40000010", x"00000040", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
 		--wait until clkm'event and clkm='1';
 		ahbtbmidle(false, ctrl);
 		wait for 100 ns;
-		wait for 100 ns;
-		ahbread (x"40000004", x"98700000", "10", 2, false , ctrl);
+		ahbread(x"40000034", x"11111111", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
-		ahbread (x"40000000", x"12300000", "10", 2, false , ctrl);
+		ahbread(x"40000038", x"22222222", "10", 2, false , ctrl);
+		wait until clkm'event and clkm='1';
+		ahbread(x"4000003c", x"44444444", "10", 2, false , ctrl);
+		wait until clkm'event and clkm='1';
+		ahbread(x"40000040", x"88888888", "10", 2, false , ctrl);
+		wait until clkm'event and clkm='1';
+		ahbread(x"40000044", x"aaaaaaaa", "10", 2, false , ctrl);
+		wait until clkm'event and clkm='1';
+		ahbread(x"40000010", x"00000040", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
 		ahbtbmidle(false, ctrl);
 		wait for 100 ns;

@@ -49,7 +49,7 @@ end top_noc;
 
 architecture rtl of top_noc is
 
-function address2array (
+function address2index (
     haddr : std_logic_vector(7 downto 0))
     return integer is
     variable index : integer;
@@ -112,7 +112,7 @@ begin
 		when others =>
 			return -1;
 	end case;
-end address2array;
+end address2index;
 
 constant VERSION   : amba_version_type := 0;
 -- plug&play configuration
@@ -135,15 +135,15 @@ begin
 		slreg <= (others => (others => '0'));
 	elsif(clk'event and clk = '1') then
 		if(v.hsel(hindex) = '1' and v.htrans(1) = '1' and v.hwrite = '1') then -- write requesst
-			index := address2array(v.haddr(7 downto 0));	 -- get register index
+			index := address2index(v.haddr(7 downto 0));	 -- get register index
 			if(index >= 0) then
 				slreg_buffer := slvi.hwdata(31 downto 0);
 				slreg(index) <= slreg_buffer;
 				slvo.hresp    <= "00"; 
-				print("Accepted "&tost(slreg_buffer)&" into "&tost(index));
+				--print("Accepted "&tost(slreg_buffer)&" into "&tost(index));
 			else														 -- error unknown address
 				slvo.hresp    <= "01";
-				print("Unacceptable Address");
+				--print("Unacceptable Address");
 			end if;
 		end if;
 		if(slvi.hsel(hindex) = '1') then
@@ -152,14 +152,14 @@ begin
 				if(v.hwrite = '1' and slvi.haddr = v.haddr) then -- write back buffer if immediate request of written data
 					slvo.hrdata(31 downto 0) <= slreg_buffer;
 				else															 -- get register data
-					index := address2array(slvi.haddr(7 downto 0));
+					index := address2index(slvi.haddr(7 downto 0));
 					if(index >= 0) then
 						slvo.hrdata(31 downto 0) <= slreg(index);
 						slvo.hresp    <= "00"; 
-						print("Extracted "&tost(slreg(index))&" from "&tost(index));
+						--print("Extracted "&tost(slreg(index))&" from "&tost(index));
 					else														 -- error unknown address
 						slvo.hresp    <= "01";
-						print("Unacceptable Address");
+						--print("Unacceptable Address");
 					end if;
 				end if;
 			end if;
@@ -167,10 +167,35 @@ begin
 			v <= ahbs_in_none;
 		end if;
 	end if;
+	if(slreg(address2index(x"10"))(6) = '1') then
+		if(slreg(address2index(x"30"))(7) = '0') then
+			slreg(address2index(x"34")) <= slreg(address2index(x"14"));
+			slreg(address2index(x"38")) <= slreg(address2index(x"18"));
+			slreg(address2index(x"3c")) <= slreg(address2index(x"1c"));
+			slreg(address2index(x"40")) <= slreg(address2index(x"20"));
+			slreg(address2index(x"44")) <= slreg(address2index(x"24"));
+			slreg(address2index(x"30"))(7) <= '1';
+		elsif(slreg(address2index(x"50"))(7) = '0') then
+			slreg(address2index(x"54")) <= slreg(address2index(x"14"));
+			slreg(address2index(x"58")) <= slreg(address2index(x"18"));
+			slreg(address2index(x"5c")) <= slreg(address2index(x"1c"));
+			slreg(address2index(x"60")) <= slreg(address2index(x"20"));
+			slreg(address2index(x"64")) <= slreg(address2index(x"24"));
+			slreg(address2index(x"50"))(7) <= '1';
+		elsif(slreg(address2index(x"70"))(7) = '0') then
+			slreg(address2index(x"74")) <= slreg(address2index(x"14"));
+			slreg(address2index(x"78")) <= slreg(address2index(x"18"));
+			slreg(address2index(x"7c")) <= slreg(address2index(x"1c"));
+			slreg(address2index(x"80")) <= slreg(address2index(x"20"));
+			slreg(address2index(x"84")) <= slreg(address2index(x"24"));
+			slreg(address2index(x"70"))(7) <= '1';
+		end if;
+	end if;
   	slvo.hsplit   <= (others => '0'); 
   	slvo.hirq    <= (others => '0');
   	slvo.hconfig <= hconfig;
   	slvo.hindex  <= hindex;
+	
 end process;
 
 end rtl;
