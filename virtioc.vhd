@@ -37,7 +37,7 @@ use grlib.amba.all;
 entity virtioc is
 	generic (
     hconfig_noc  : virtioc_hconfig := virtioc_hconfig_def;
-    hconfig_per  : virtioc_hconfig := virtioc_hconfig_def;
+    hconfig_per  : virtioc_hconfig := virtioc_hconfig_def
 	 ); 
    port (
       rst  : in  std_ulogic;
@@ -51,8 +51,8 @@ end virtioc;
 
 architecture Behavioral of virtioc is
 
-	signal noc_dmai, per_dmai : ahb_dmai_in_type;
-	signal noc_dmao, per_damo : ahb_dmao_out_type;
+	signal dmai_noc, dmai_per : ahb_dma_in_type;
+	signal dmao_noc, dmao_per : ahb_dma_out_type;
 
 begin
 
@@ -60,13 +60,18 @@ begin
 		generic map (hindex => hconfig_noc.hindex, hirq => hconfig_noc.hirq, venid => hconfig_noc.venid,
                  devid => hconfig_noc.devid, version => hconfig_noc.version,
                  chprot => hconfig_noc.chprot, incaddr => hconfig_noc.incaddr)
-		port map(rst, clk, noc_dmai, noc_dmao, noc_ahbi, noc_ahbo);
+		port map(rst, clk, dmai_noc, dmao_noc, ahbi_noc, ahbo_noc);
 		
 	per_mst1 : ahbmst
 		generic map (hindex => hconfig_per.hindex, hirq => hconfig_per.hirq, venid => hconfig_per.venid,
                  devid => hconfig_per.devid, version => hconfig_per.version,
                  chprot => hconfig_per.chprot, incaddr => hconfig_per.incaddr)
-		port map(rst, clk, per_dmai, per_dmao, ahbi, ahbo);
+		port map(rst, clk, dmai_per, dmao_per, ahbi_per, ahbo_per);
+	
+	process(clk, rst)
+	begin
+		
+	end process;
 
 end Behavioral;
 

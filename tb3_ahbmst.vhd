@@ -42,7 +42,7 @@ use grlib.devices.all;
 ENTITY tb3_ahbmst IS
 END tb3_ahbmst;
  
-ARCHITECTURE test_virtioc OF tb3_ahbmst IS 
+ARCHITECTURE test_ahbmst OF tb3_ahbmst IS 
  
     -- Component Declaration for the Unit Under Test (UUT)
     
@@ -118,7 +118,7 @@ BEGIN
 		ahbtbminit(ctrl); -- at 100ns
       wait for 100 ns;
 		wait until clkm'event and clkm='1';
-		dmai.address <= x"4000000c";
+		dmai.address <= x"40000014";
 		dmai.wdata(31 downto 0) <= x"f1234000";
 		dmai.burst <= '0';
 		dmai.write <= '1';
@@ -129,12 +129,43 @@ BEGIN
 		dmai.start <= '1';
 		wait until clkm'event and clkm='1';
 		wait until dmao.active = '1';
+		dmai.address <= x"40000004";
+		--dmai.wdata(31 downto 0) <= x"fffff000";
+		dmai.burst <= '0';
+		dmai.write <= '1';
+		dmai.busy <= '0';
+		dmai.irq <= '0';
+		dmai.size <= "010";
+		--wait until dmao.active = '1';
+		wait until clkm'event and clkm='1';
+		dmai.wdata(31 downto 0) <= x"fffff000";
 		wait until clkm'event and clkm='1';
 		dmai.start <= '0';
 		-- ahbtbm0
+		wait for 200 ns;
 		ahbread(x"40000014", x"f1234000", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
+		ahbread(x"40000004", x"00000000", "10", 2, false , ctrl);
+		wait until clkm'event and clkm='1';
 		ahbtbmidle(false, ctrl);
+		wait for 200 ns;
+		dmai.address <= x"40000014";
+		dmai.wdata(31 downto 0) <= x"aaaaaaaa";
+		dmai.write <= '0';
+		dmai.start <= '1';
+		wait until dmao.active = '1';
+		wait until clkm'event and clkm='1';
+		--dmai.start <= '0';
+		--wait until clkm'event and clkm='1';
+		dmai.address <= x"40000004";
+		dmai.wdata(31 downto 0) <= x"bbbbbbbb";
+		dmai.write <= '0';
+		dmai.start <= '1';
+		wait until dmao.active = '1';
+		wait until clkm'event and clkm='1';
+		--dmai.start <= '0';
+		wait until clkm'event and clkm='1';
+		dmai.start <= '0';
 		-- Stop simulation
 		--ahbtbmdone(0, ctrl); 
       wait;

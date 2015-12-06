@@ -65,10 +65,10 @@ BEGIN
 	-- Instantiate the Unit Under Test (UUT)
    uut: top_noc
 	generic map (
-    hindex => 7,
+    hindex => 0,
     haddr => 16#400#,
     hmask => 16#fff#)
-    port map (rstn, clkm, ahbsi, ahbso(7));
+    port map (rstn, clkm, ahbsi, ahbso(0));
 		  
 	ahb0 : ahbctrl       -- AHB arbiter/multiplexer
 				generic map (defmast => 0, split => 0, 
@@ -117,6 +117,8 @@ BEGIN
 		ahbwrite(x"40000024", x"aaaaaaaa", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
 		ahbwrite(x"40000010", x"00000040", "10", 2, false , ctrl);
+		wait until clkm'event and clkm='1';
+		ahbread(x"40000010", x"00000040", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
 		--wait until clkm'event and clkm='1';
 		ahbtbmidle(false, ctrl);
