@@ -127,19 +127,29 @@ signal v : ahb_slv_in_type;
   
 begin
 process(clk, rst)
-variable slreg_buffer : std_logic_vector(31 downto 0);
+--variable slreg_buffer : std_logic_vector(31 downto 0);
+variable queue : integer := 0;
 variable index : integer := -1;
 begin
 	if(rst = '0') then
 		slvo <= ahbs_none;
 		slreg <= (others => (others => '0'));
 	elsif(clk'event and clk = '1') then
+		slvo.hready <= '1';
+		if(queue = 2) then
+			index := address2index(v.haddr(7 downto 0));
+			slvo.hrdata(31 downto 0) <= slreg(index);
+			slvo.hresp    <= "00";
+			queue := 0;
+		end if;
 		if(v.hsel(hindex) = '1' and v.htrans(1) = '1' and v.hwrite = '1') then -- write requesst
 			index := address2index(v.haddr(7 downto 0));	 -- get register index
 			if(index >= 0) then
-				slreg_buffer := slvi.hwdata(31 downto 0);
-				slreg(index) <= slreg_buffer;
+				--slreg_buffer := slvi.hwdata(31 downto 0);
+				--slreg(index) <= slreg_buffer;
+				slreg(index) <= slvi.hwdata(31 downto 0);
 				slvo.hresp    <= "00"; 
+				queue := 1;
 				--print("Accepted "&tost(slreg_buffer)&" into "&tost(index));
 			else														 -- error unknown address
 				slvo.hresp    <= "01";
@@ -149,9 +159,12 @@ begin
 		if(slvi.hsel(hindex) = '1') then
 			v <= slvi;
 			if(slvi.htrans(1) = '1' and slvi.hwrite = '0') then -- read request
-				if(v.hwrite = '1' and slvi.haddr = v.haddr) then -- write back buffer if immediate request of written data
-					slvo.hrdata(31 downto 0) <= slreg_buffer;
+				if(v.hwrite = '1' and slvi.haddr = v.haddr and queue = 1) then -- write back buffer if immediate request of written data
+					--slvo.hrdata(31 downto 0) <= slreg_buffer;
+					slvo.hready <= '0';
+					queue := 2;
 				else															 -- get register data
+					queue := 0;
 					index := address2index(slvi.haddr(7 downto 0));
 					if(index >= 0) then
 						slvo.hrdata(31 downto 0) <= slreg(index);

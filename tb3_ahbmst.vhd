@@ -118,6 +118,7 @@ BEGIN
 		ahbtbminit(ctrl); -- at 100ns
       wait for 100 ns;
 		wait until clkm'event and clkm='1';
+		-----------------------------------------------
 		dmai.address <= x"40000014";
 		dmai.wdata(31 downto 0) <= x"f1234000";
 		dmai.burst <= '0';
@@ -125,23 +126,22 @@ BEGIN
 		dmai.busy <= '0';
 		dmai.irq <= '0';
 		dmai.size <= "010";
-		--wait until clkm'event and clkm='1';
 		dmai.start <= '1';
 		wait until clkm'event and clkm='1';
 		wait until dmao.active = '1';
-		dmai.address <= x"40000004";
+		------------------------------------------------
+		dmai.address <= x"40000014";
 		--dmai.wdata(31 downto 0) <= x"fffff000";
 		dmai.burst <= '0';
-		dmai.write <= '1';
+		dmai.write <= '0';
 		dmai.busy <= '0';
 		dmai.irq <= '0';
 		dmai.size <= "010";
-		--wait until dmao.active = '1';
 		wait until clkm'event and clkm='1';
-		dmai.wdata(31 downto 0) <= x"fffff000";
+		--dmai.wdata(31 downto 0) <= x"fffff000";
 		wait until clkm'event and clkm='1';
 		dmai.start <= '0';
-		-- ahbtbm0
+		-------------------------------------------------
 		wait for 200 ns;
 		ahbread(x"40000014", x"f1234000", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
@@ -149,6 +149,7 @@ BEGIN
 		wait until clkm'event and clkm='1';
 		ahbtbmidle(false, ctrl);
 		wait for 200 ns;
+		-------------------------------------------------
 		dmai.address <= x"40000014";
 		dmai.wdata(31 downto 0) <= x"aaaaaaaa";
 		dmai.write <= '0';

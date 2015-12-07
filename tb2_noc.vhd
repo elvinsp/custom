@@ -118,6 +118,8 @@ BEGIN
 		wait until clkm'event and clkm='1';
 		ahbwrite(x"40000010", x"00000040", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
+		ahbwrite(x"40000010", x"00000040", "10", 2, false , ctrl);
+		wait until clkm'event and clkm='1';
 		ahbread(x"40000010", x"00000040", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
 		--wait until clkm'event and clkm='1';
