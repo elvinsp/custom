@@ -135,7 +135,7 @@ BEGIN
 		wait until clkm'event and clkm='1';
 		ahbread(x"40000044", x"aaaaaaaa", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
-		ahbread(x"40000010", x"00000040", "10", 2, false , ctrl);
+		ahbread(x"60000010", x"00000040", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
 		ahbtbmidle(false, ctrl);
 		wait for 100 ns;

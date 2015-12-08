@@ -130,7 +130,7 @@ BEGIN
 		wait until clkm'event and clkm='1';
 		wait until dmao.active = '1';
 		------------------------------------------------
-		dmai.address <= x"40000014";
+		dmai.address <= x"40000018";
 		--dmai.wdata(31 downto 0) <= x"fffff000";
 		dmai.burst <= '0';
 		dmai.write <= '0';
@@ -138,14 +138,14 @@ BEGIN
 		dmai.irq <= '0';
 		dmai.size <= "010";
 		wait until clkm'event and clkm='1';
-		--dmai.wdata(31 downto 0) <= x"fffff000";
+		dmai.wdata(31 downto 0) <= x"fffff000";
 		wait until clkm'event and clkm='1';
 		dmai.start <= '0';
 		-------------------------------------------------
 		wait for 200 ns;
 		ahbread(x"40000014", x"f1234000", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
-		ahbread(x"40000004", x"00000000", "10", 2, false , ctrl);
+		ahbread(x"40000018", x"fffff000", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
 		ahbtbmidle(false, ctrl);
 		wait for 200 ns;
