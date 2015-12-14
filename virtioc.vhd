@@ -52,12 +52,29 @@ end virtioc;
 architecture Behavioral of virtioc is
 
 	type dmai_buffer is array (0 to (2**bsize)-1) of ahb_dma_in_type;
+	type dmai_rom is array (0 to 15) of ahb_dma_in_type;
+	signal rom : dmai_rom := (
+	(x"40000010", x"1fff0000ffff0000ffff00001fff0000", '1', '0', '1', '0', '0', "010"),
+	(x"40000014", x"3fff0000ffff0000ffff00003fff0000", '1', '0', '1', '0', '0', "010"),
+	(x"40000018", x"7fff0000ffff0000ffff00007fff0000", '1', '0', '1', '0', '0', "010"),
+	(x"40000020", x"00000000ffff0000ffff0000dead0000", '1', '0', '1', '0', '0', "010"),
+	(x"40000020", x"00000000ffff0000ffff000000000000", '1', '0', '0', '0', '0', "010"),
+	(x"40000018", x"dead0000ffff0000ffff000000000000", '1', '0', '0', '0', '0', "010"),
+	(x"40000010", x"00000000ffff0000ffff000000000000", '1', '0', '0', '0', '0', "010"),
+	(x"40000024", x"def00000ffff0000ffff0000def00000", '1', '0', '1', '0', '0', "010"),
+	(x"40000024", x"def00000ffff0000ffff000000000000", '1', '0', '0', '0', '0', "010"),
+	(x"40000028", x"bed00000ffff0000ffff000011100000", '1', '0', '1', '0', '0', "010"),
+	(x"40000024", x"bed00000ffff0000ffff0000bed00000", '1', '0', '1', '0', '0', "010"),
+	(x"40000028", x"00000000ffff0000ffff000000000000", '1', '0', '0', '0', '0', "010"),
+	dmai_none, dmai_none, dmai_none, dmai_none
+	);
 
 	signal dmai_noc : ahb_dma_in_type;
 	signal dmao_noc : ahb_dma_out_type;
 	
-	signal dma_out : ahb_dma_in_type;
-	signal wr_en, out_overflow : std_logic;
+	signal dmab_in : ahb_dma_in_type;
+	signal wr_en, out_overflow, out_underflow, hwrite, hstart : std_logic;
+	signal hwdata : std_logic_vector(AHBDW-1 downto 0);
 
 begin
 
@@ -70,10 +87,7 @@ begin
 	dma_out_proc : process(clk, rst)
 		variable outbuffer : dmai_buffer;
 		variable wr_pointer : unsigned(bsize downto 0);
-		variable re_pointer : unsigned((bsize-1) downto 0);
-		variable stop : std_logic;
-		variable hwdata : std_logic_vector(AHBDW-1 downto 0);
-		constant base : unsigned((bsize-1) downto 0) := (others => '0');
+		variable re_pointer : unsigned(bsize downto 0);
 	begin
 		-----------------------------------------------
 		if(rst = '0') then
@@ -81,39 +95,76 @@ begin
 			outbuffer := (others => dmai_none);
 			wr_pointer := (others => '0');
 			re_pointer := (others => '0');
-			stop := '0';
-			hwdata := (others => '0');
-			wr_en <= '0';
+			hwdata <= (others => '0');
+			hwrite <= '0';
+			hstart <= '1';
 			out_overflow <= '0';
+			out_underflow <= '1';
 		-----------------------------------------------	
 		elsif(clk'event and clk = '1') then
-			if(wr_en = '1' and stop = '0') then
-				outbuffer(conv_integer(wr_pointer)) := dma_out;
-				wr_pointer := wr_pointer + '1';
-				-- if pointers aren't on the same place and carrier isn't set
-				if(re_pointer = wr_pointer((bsize-1) downto 0) and wr_pointer(bsize) = '1') then
-					-- write pointer is equal read pointer and came from behind
-					stop := '1';
-					out_overflow <= '1';
+			if(re_pointer((bsize-1) downto 0) /= wr_pointer((bsize-1) downto 0) or wr_pointer(bsize) = '0') then
+			-- filling buffer and incrementing write pointer
+				if(wr_en = '1') then
+					outbuffer(conv_integer(wr_pointer((bsize-1) downto 0))) := dmab_in;
+					wr_pointer := wr_pointer + '1';
+					out_underflow <= '0';
 				end if;
+			else
+				out_overflow <= '1';
 			end if;
-			-- if pointers aren't on the same place and carrier isn't set
-			if(re_pointer /= wr_pointer((bsize-1) downto 0) or wr_pointer(bsize) = '0') then 
-				dmai_noc <= outbuffer(conv_integer(re_pointer));
-				dmai_noc.wdata <= hwdata;
-				hwdata := outbuffer(conv_integer(re_pointer)).wdata;
-				re_pointer := re_pointer + '1';
-				if(re_pointer /= wr_pointer((bsize-1) downto 0) and wr_pointer(bsize) = '1') then
-				-- write pointer is behind read pointer
-					stop := '0';
+			----------------------------------------------------------
+			if((re_pointer((bsize-1) downto 0) /= wr_pointer((bsize-1) downto 0) or wr_pointer(bsize) = '1')) then 
+			-- emptying buffer und incrementing read pointer
+				--dmai_noc.start <= '1';
+				if(dmao_noc.ready = '1') then
+					re_pointer := re_pointer + '1';
 					out_overflow <= '0';
 				end if;
-				if(re_pointer = base) then wr_pointer(bsize) := '0';
+				if(re_pointer(bsize) = '1' and re_pointer(bsize) = '1') then
+				-- read pointer at index 0 again
+					wr_pointer(bsize) := '0';
+					re_pointer(bsize) := '0';
 				end if;
+				dmai_noc <= outbuffer(conv_integer(re_pointer));
+				dmai_noc.wdata <= hwdata;
+				dmai_noc.start <= hstart;
+				hwdata <= outbuffer(conv_integer(re_pointer)).wdata;
+				hwrite <= outbuffer(conv_integer(re_pointer)).write;
+				hstart <= outbuffer(conv_integer(re_pointer)).start;
+			elsif(re_pointer((bsize-1) downto 0) = wr_pointer((bsize-1) downto 0) and wr_pointer(bsize) = '0') then
+			-- buffer underflow but a write must be completed
+				if(hwrite = '1') then
+					dmai_noc.wdata <= hwdata;
+					hwrite <= '0';
+				end if;
+				out_underflow <= '1';
+				dmai_noc.start <= '0';
+				--dmai_noc.start <= '0';
+			else
+				--dmai_noc.start <= '0';
 			end if;
 		end if;
 		-----------------------------------------------
 	end process dma_out_proc;
+	
+	dma_fill: process(clk, rst)
+	variable count : unsigned(3 downto 0) := (others => '0'); 
+	begin
+		if(rst = '0') then
+			count := (others => '0');
+			wr_en <= '0';
+		else
+			if(clk'event and clk = '1') then
+				if(out_overflow = '0' and rom(conv_integer(count)).start = '1') then
+					dmab_in <= rom(conv_integer(count));
+					wr_en <= '1';
+					count := count + '1';
+				else
+					wr_en <= '0';
+				end if;
+			end if;
+		end if;
+	end process dma_fill;
 	
 	
 

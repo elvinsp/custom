@@ -130,24 +130,26 @@ process(clk, rst)
 --variable slreg_buffer : std_logic_vector(31 downto 0);
 variable queue : integer := 0;
 variable index : integer := -1;
+variable taddr : std_logic_vector(7 downto 0) := (others => '0');
 begin
 	if(rst = '0') then
 		slvo <= ahbs_none;
 		slreg <= (others => (others => '0'));
 	elsif(clk'event and clk = '1') then
-		slvo.hready <= '1';
 		if(queue = 2) then
+			slvo.hready <= '1';
 			index := address2index(v.haddr(7 downto 0));
 			slvo.hrdata(31 downto 0) <= slreg(index);
 			slvo.hresp    <= "00";
 			queue := 0;
 		end if;
-		if(v.hsel(hindex) = '1' and v.htrans(1) = '1' and v.hwrite = '1') then -- write requesst
+		if(v.hsel(hindex) = '1' and v.htrans(1) = '1' and v.hwrite = '1') then -- finishing write requesst from last cycle
+			--if(v.haddr = slvi.haddr and slvi.hwrite = '1') then
+				--slvo.hresp <= "10";
+			--else
 			index := address2index(v.haddr(7 downto 0));	 -- get register index
 			if(index >= 0) then
-				--slreg_buffer := slvi.hwdata(31 downto 0);
-				--slreg(index) <= slreg_buffer;
-				slreg(index) <= slvi.hwdata(31 downto 0);
+				slreg(index) <= slvi.hwdata(31 downto 0); -- available next clock
 				slvo.hresp    <= "00"; 
 				queue := 1;
 				--print("Accepted "&tost(slreg_buffer)&" into "&tost(index));
@@ -155,12 +157,14 @@ begin
 				slvo.hresp    <= "01";
 				--print("Unacceptable Address");
 			end if;
+			--end if;
 		end if;
+		-----------------------------------------------------------------------
 		if(slvi.hsel(hindex) = '1') then
 			v <= slvi;
 			if(slvi.htrans(1) = '1' and slvi.hwrite = '0') then -- read request
-				if(v.hwrite = '1' and slvi.haddr = v.haddr and queue = 1) then -- write back buffer if immediate request of written data
-					--slvo.hrdata(31 downto 0) <= slreg_buffer;
+				if(v.hwrite = '1' and slvi.haddr = v.haddr and queue = 1) then 
+				-- wait for next cycle to retrieve data because it is just being writen (queue)
 					slvo.hready <= '0';
 					queue := 2;
 				else															 -- get register data
@@ -180,6 +184,7 @@ begin
 			v <= ahbs_in_none;
 		end if;
 	end if;
+	---------------------------------------------------------------------
 	if(slreg(address2index(x"10"))(6) = '1') then
 		if(slreg(address2index(x"30"))(7) = '0') then
 			slreg(address2index(x"34")) <= slreg(address2index(x"14"));
