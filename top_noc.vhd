@@ -138,11 +138,11 @@ begin
 	elsif(clk'event and clk = '1') then
 		if(queue = 2) then
 			slvo.hready <= '1';
-			index := address2index(v.haddr(7 downto 0));
-			slvo.hrdata(31 downto 0) <= slreg(index);
-			slvo.hresp    <= "00";
+			--index := address2index(v.haddr(7 downto 0));
+			--slvo.hrdata(31 downto 0) <= slreg(index);
+			--slvo.hresp    <= "00";
 			queue := 0;
-		end if;
+		else
 		if(v.hsel(hindex) = '1' and v.htrans(1) = '1' and v.hwrite = '1') then -- finishing write requesst from last cycle
 			--if(v.haddr = slvi.haddr and slvi.hwrite = '1') then
 				--slvo.hresp <= "10";
@@ -162,17 +162,20 @@ begin
 		-----------------------------------------------------------------------
 		if(slvi.hsel(hindex) = '1') then
 			v <= slvi;
+			slvo.hresp    <= "00"; 
 			if(slvi.htrans(1) = '1' and slvi.hwrite = '0') then -- read request
 				if(v.hwrite = '1' and slvi.haddr = v.haddr and queue = 1) then 
 				-- wait for next cycle to retrieve data because it is just being writen (queue)
 					slvo.hready <= '0';
-					queue := 2;
+					slvo.hresp <= "10";
+					queue := 0;
+				--elsif(queue = 2) then
 				else															 -- get register data
 					queue := 0;
 					index := address2index(slvi.haddr(7 downto 0));
 					if(index >= 0) then
 						slvo.hrdata(31 downto 0) <= slreg(index);
-						slvo.hresp    <= "00"; 
+						--slvo.hresp    <= "00"; 
 						--print("Extracted "&tost(slreg(index))&" from "&tost(index));
 					else														 -- error unknown address
 						slvo.hresp    <= "01";
@@ -182,6 +185,7 @@ begin
 			end if;
 		elsif(v.hsel(hindex) = '1') then
 			v <= ahbs_in_none;
+		end if;
 		end if;
 	end if;
 	---------------------------------------------------------------------
