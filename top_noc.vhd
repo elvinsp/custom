@@ -23,6 +23,8 @@ use ieee.std_logic_1164.all;
 library grlib;
 use grlib.stdlib.all;
 use grlib.amba.all;
+library gaisler;
+use gaisler.ahbtbp.all;
 --use grlib.config_types.all;
 --use grlib.config.all;
 
@@ -129,64 +131,82 @@ begin
 process(clk, rst)
 --variable slreg_buffer : std_logic_vector(31 downto 0);
 variable queue : integer := 0;
-variable index : integer := -1;
-variable taddr : std_logic_vector(7 downto 0) := (others => '0');
+variable index : integer := 27;
+variable tindex : integer := 27;
+variable t : ahb_slv_out_type;
+variable r : ahb_slv_in_type;
 begin
 	if(rst = '0') then
-		slvo <= ahbs_none;
+		t := ahbs_none;
+		r := ahbs_in_none;
 		slreg <= (others => (others => '0'));
+		slvo <= ahbs_none;
 	elsif(clk'event and clk = '1') then
-		if(queue = 2) then
-			slvo.hready <= '1';
-			--index := address2index(v.haddr(7 downto 0));
-			--slvo.hrdata(31 downto 0) <= slreg(index);
-			--slvo.hresp    <= "00";
-			queue := 0;
-		else
-		if(v.hsel(hindex) = '1' and v.htrans(1) = '1' and v.hwrite = '1') then -- finishing write requesst from last cycle
-			--if(v.haddr = slvi.haddr and slvi.hwrite = '1') then
-				--slvo.hresp <= "10";
-			--else
-			index := address2index(v.haddr(7 downto 0));	 -- get register index
-			if(index >= 0) then
-				slreg(index) <= slvi.hwdata(31 downto 0); -- available next clock
-				slvo.hresp    <= "00"; 
-				queue := 1;
-				--print("Accepted "&tost(slreg_buffer)&" into "&tost(index));
-			else														 -- error unknown address
-				slvo.hresp    <= "01";
-				--print("Unacceptable Address");
-			end if;
-			--end if;
-		end if;
-		-----------------------------------------------------------------------
-		if(slvi.hsel(hindex) = '1') then
-			v <= slvi;
-			slvo.hresp    <= "00"; 
-			if(slvi.htrans(1) = '1' and slvi.hwrite = '0') then -- read request
-				if(v.hwrite = '1' and slvi.haddr = v.haddr and queue = 1) then 
-				-- wait for next cycle to retrieve data because it is just being writen (queue)
-					slvo.hready <= '0';
-					slvo.hresp <= "10";
-					queue := 0;
-				--elsif(queue = 2) then
-				else															 -- get register data
-					queue := 0;
-					index := address2index(slvi.haddr(7 downto 0));
-					if(index >= 0) then
-						slvo.hrdata(31 downto 0) <= slreg(index);
-						--slvo.hresp    <= "00"; 
-						--print("Extracted "&tost(slreg(index))&" from "&tost(index));
-					else														 -- error unknown address
-						slvo.hresp    <= "01";
-						--print("Unacceptable Address");
+		r := slvi; -- input ahb_slv_in buffer
+		if(r.hsel(hindex) = '1') then
+			if(t.hresp = "00") then 
+				if(r.htrans(1) = '1') then
+					---- Write hwdata ----------------------------------------
+					if(tindex >= 0 and tindex < 27) then
+						slreg(tindex) <= r.hwdata(31 downto 0);
+						queue := 1;
+						print("W01s "&tost(r.hwdata(31 downto 0))&" @ "&ptime);
+					else
+						-- slvo.hresp    <= "01";
+						-- print("W01v "&tost(slvi.hwdata(31 downto 0)))&" @ "&ptime);
+						-- possible errors were handled last cycle
+					end if;
+					---- Read AHBdata ----------------------------------------
+					index := address2index(r.haddr(7 downto 0));
+					if(index >= 0 and index < 27) then
+						-- haddr is legit
+						if(r.hwrite = '0') then
+							if(queue = 1 and tindex = index) then
+								-- immediate readout after write; wait for legit data; not within AMBA Spec
+								-- t.hresp <= "10";
+								t.hresp := "10";
+								t.hready := '0';
+								queue := 0;   -- don't come here again unless there was a write transfer
+								tindex := 27; -- deleting index so no illegal write is initiated in write section
+								print("D00s "&tost(r.haddr(31 downto 0))&" @ "&ptime);
+							else
+								-- Basic read transfer according to AMBA Spec (Rev 2.0)
+								t.hready := '1';
+								t.hrdata(31 downto 0) := slreg(index);
+								t.hresp := "00";
+								tindex := 27; -- deleting index so no illegal write is initiated in write section
+								print("R00s "&tost(slreg(index))&" from "&tost(r.haddr(31 downto 0))&" @ "&ptime);
+							end if;
+						else
+							-- preparing write transfer in next cycle according to AMBA Spec (Rev 2.0)
+							tindex := index; -- saving index for next cycle
+							t.hresp := "00";
+							t.hready := '1';
+							-- print("W00s "&tost(r.haddr(31 downto 0))&" @ "&ptime);
+						end if;
+					else
+						-- initiating two-cycle response according to AMBA Spec (Rev 2.0) Chapter 3.9.3
+						t.hresp := "01";
+						t.hready := '0';
+						-- invalid address
+						tindex := 27;
+						index := 27;
+						print("E01s "&tost(r.haddr(31 downto 0))&" @ "&ptime);
 					end if;
 				end if;
+					-- 2nd cycle of two-cycle response according to AMBA Spec (Rev 2.0) Chapter 3.9.3
+			elsif(t.hresp /= "00" and t.hready = '1') then --------
+				if(r.htrans = "00") then
+					t.hresp := "00";
+				end if;
+					-- 1st cycle of two-cycle response according to AMBA Spec (Rev 2.0) Chapter 3.9.3
+			else 	-------
+				t.hready := '1';
 			end if;
-		elsif(v.hsel(hindex) = '1') then
-			v <= ahbs_in_none;
+		else
+			r := ahbs_in_none; -- slave not selected, no input
 		end if;
-		end if;
+		slvo <= t; -- output ahb_slv_out buffer
 	end if;
 	---------------------------------------------------------------------
 	if(slreg(address2index(x"10"))(6) = '1') then
