@@ -54,8 +54,7 @@ architecture Behavioral of virtioc is
 	type dmai_buffer is array (0 to (2**bsize)-1) of ahb_dma_in_type;
 	type dmai_rom is array (0 to 15) of ahb_dma_in_type;
 	signal rom : dmai_rom := (
-	--(x"00000000", x"00000000000000000000000000000000", '1', '0', '0', '0', '0', "000"),
-	(x"40000010", x"1fff0000ffff0000ffff00001fff0000", '1', '0', '1', '0', '0', "010"),
+	(x"40000028", x"1fff0000ffff0000ffff00001fff0000", '1', '0', '1', '0', '0', "010"),
 	(x"40000014", x"3fff0000ffff0000ffff00003fff0000", '1', '0', '1', '0', '0', "010"),
 	(x"40000018", x"7fff0000ffff0000ffff00007fff0000", '1', '0', '1', '0', '0', "010"),
 	(x"40000020", x"00000000ffff0000ffff0000dead0000", '1', '0', '1', '0', '0', "010"),
