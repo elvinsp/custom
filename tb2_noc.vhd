@@ -115,10 +115,20 @@ BEGIN
 		wait for 40 ns;
 		-- Initialize the control signals
 		ahbtbminit(le_ctrl);
+		wait until clkm'event and clkm='1';
+		ahbtbmidle(false, le_ctrl);
       wait for 200 ns;	
 		ahbwrite(x"40000014", x"11111111", "10", 2, false , le_ctrl);
 		wait until clkm'event and clkm='1';
-		ahbread(x"40000010", x"00000040", "10", 2, false , le_ctrl);
+		ahbwrite(x"40000010", x"10000040", "10", 2, false , le_ctrl);
+		wait until clkm'event and clkm='1';
+		ahbwrite(x"40000018", x"44444444", "10", 2, false , le_ctrl);
+		wait until clkm'event and clkm='1';
+		ahbwrite(x"40000010", x"10000040", "10", 2, false , le_ctrl);
+		wait until clkm'event and clkm='1';
+		ahbread(x"40000014", x"11111111", "10", 2, false , le_ctrl);
+		wait until clkm'event and clkm='1';
+		ahbread(x"40000010", x"10000000", "10", 2, false , le_ctrl);
 		wait until clkm'event and clkm='1';
 		--wait until clkm'event and clkm='1';
 		ahbtbmidle(false, le_ctrl);
@@ -137,7 +147,7 @@ BEGIN
       wait for 300 ns;	
 		ahbwrite(x"60000014", x"11111111", "10", 2, false , io_ctrl);
 		wait until clkm'event and clkm='1';
-		ahbread(x"60000010", x"00000040", "10", 2, false , io_ctrl);
+		ahbread(x"60000010", x"00000080", "10", 2, false , io_ctrl);
 		wait until clkm'event and clkm='1';
 		--wait until clkm'event and clkm='1';
 		ahbtbmidle(false, io_ctrl);
