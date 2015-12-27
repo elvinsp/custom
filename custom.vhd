@@ -48,14 +48,19 @@ constant dmai_none : ahb_dma_in_type := ((others => '0'), (others => '0'), '0', 
 
 component top_noc
 	 generic (
-    hindex  : integer := 0;
-    haddr   : integer := 16#400#;
-    hmask   : integer := 16#fff#);
+    leon_hindex : integer := 0;
+    leon_haddr  : integer := 0;
+    hmask       : integer := 16#0ff#;
+	 io_hindex   : integer := 0;
+    io_haddr    : integer := 0;
+	 dbg			 : std_logic := '0');
     port (
     rst     : in  std_ulogic;
     clk     : in  std_ulogic;
-    slvi    : in 	ahb_slv_in_type;
-    slvo    : out ahb_slv_out_type);
+    leon_slvi  : in   ahb_slv_in_type;
+    leon_slvo  : out  ahb_slv_out_type;
+	 io_slvi    : in   ahb_slv_in_type;
+    io_slvo    : out  ahb_slv_out_type);
 end component;
 
 component virtioc

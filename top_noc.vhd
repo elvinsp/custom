@@ -39,19 +39,24 @@ use gaisler.ahbtbp.all;
 
 entity top_noc is
 	 generic (
-    hindex      : integer := 0;
-    haddr       : integer := 0;
-    hmask       : integer := 16#0ff#);
+    leon_hindex : integer := 0;
+    leon_haddr  : integer := 0;
+    hmask       : integer := 16#0ff#;
+	 io_hindex   : integer := 0;
+    io_haddr    : integer := 0;
+	 dbg			 : std_logic := '0');
     port (
     rst     : in  std_ulogic;
     clk     : in  std_ulogic;
-    slvi    : in   ahb_slv_in_type;
-    slvo    : out  ahb_slv_out_type);
+    leon_slvi  : in   ahb_slv_in_type;
+    leon_slvo  : out  ahb_slv_out_type;
+	 io_slvi    : in   ahb_slv_in_type;
+    io_slvo    : out  ahb_slv_out_type);
 end top_noc;
 
 architecture rtl of top_noc is
 
-function address2index (
+function a2i (
     haddr : std_logic_vector(7 downto 0))
     return integer is
     variable index : integer;
@@ -114,22 +119,28 @@ begin
 		when others =>
 			return -1;
 	end case;
-end address2index;
+end a2i;
 
 constant VERSION   : amba_version_type := 0;
 -- plug&play configuration
-constant hconfig : ahb_config_type := (
+constant hconfig_leon : ahb_config_type := (
   0 => ahb_device_reg ( 16#01#, 16#0E1#, 0, VERSION, 0), --ahb_device_reg (VENDOR_EXAMPLE, EXAMPLE_AHBRAM, 0, 0, 0)
-  4 => ahb_membar(haddr, '0', '0', hmask), -- ahb_membar(memaddr, '0', '0', memmask), others => X"00000000");
+  4 => ahb_membar(leon_haddr, '0', '0', hmask), -- ahb_membar(memaddr, '0', '0', memmask), others => X"00000000");
+  others => zero32);
+  
+constant hconfig_io : ahb_config_type := (
+  0 => ahb_device_reg ( 16#01#, 16#0E1#, 0, VERSION, 0), --ahb_device_reg (VENDOR_EXAMPLE, EXAMPLE_AHBRAM, 0, 0, 0)
+  4 => ahb_membar(io_haddr, '0', '0', hmask), -- ahb_membar(memaddr, '0', '0', memmask), others => X"00000000");
   others => zero32);
 
 type noc_reg is array (0 to 26) of std_logic_vector(31 downto 0);  
-signal slreg : noc_reg;
+signal leon_slreg, io_slreg : noc_reg;
 signal v : ahb_slv_in_type;
   
 begin
-process(clk, rst)
---variable slreg_buffer : std_logic_vector(31 downto 0);
+
+leon_ni: process(clk, rst)
+--variable leon_slreg_buffer : std_logic_vector(31 downto 0);
 variable queue : integer := 0;
 variable index : integer := 27;
 variable tindex : integer := 27;
@@ -139,25 +150,25 @@ begin
 	if(rst = '0') then
 		t := ahbs_none;
 		r := ahbs_in_none;
-		slreg <= (others => (others => '0'));
-		slvo <= ahbs_none;
+		leon_slreg <= (others => (others => '0'));
+		leon_slvo <= ahbs_none;
 	elsif(clk'event and clk = '1') then
-		r := slvi; -- input ahb_slv_in buffer
-		if(r.hsel(hindex) = '1') then
+		r := leon_slvi; -- input ahb_slv_in buffer
+		if(r.hsel(leon_hindex) = '1') then
 			if(t.hresp = "00") then 
 				if(r.htrans(1) = '1') then
 					---- Write hwdata ----------------------------------------
 					if(tindex >= 0 and tindex < 27) then
-						slreg(tindex) <= r.hwdata(31 downto 0);
+						leon_slreg(tindex) <= r.hwdata(31 downto 0);
 						queue := 1;
-						print("W01s "&tost(r.hwdata(31 downto 0))&" @ "&ptime);
+						if(dbg='1') then print("leW01s "&tost(r.hwdata(31 downto 0))&" @ "&ptime); end if;
 					else
-						-- slvo.hresp    <= "01";
-						-- print("W01v "&tost(slvi.hwdata(31 downto 0)))&" @ "&ptime);
+						-- leon_slvo.hresp    <= "01";
+						-- print("W01v "&tost(leon_slvi.hwdata(31 downto 0)))&" @ "&ptime);
 						-- possible errors were handled last cycle
 					end if;
 					---- Read AHBdata ----------------------------------------
-					index := address2index(r.haddr(7 downto 0));
+					index := a2i(r.haddr(7 downto 0));
 					if(index >= 0 and index < 27) then
 						-- haddr is legit
 						if(r.hwrite = '0') then
@@ -168,14 +179,14 @@ begin
 								t.hready := '0';
 								queue := 0;   -- don't come here again unless there was a write transfer
 								tindex := 27; -- deleting index so no illegal write is initiated in write section
-								print("D00s "&tost(r.haddr(31 downto 0))&" @ "&ptime);
+								if(dbg='1') then print("leD00s "&tost(r.haddr(31 downto 0))&" @ "&ptime); end if;
 							else
 								-- Basic read transfer according to AMBA Spec (Rev 2.0)
 								t.hready := '1';
-								t.hrdata(31 downto 0) := slreg(index);
+								t.hrdata(31 downto 0) := leon_slreg(index);
 								t.hresp := "00";
 								tindex := 27; -- deleting index so no illegal write is initiated in write section
-								print("R00s "&tost(slreg(index))&" from "&tost(r.haddr(31 downto 0))&" @ "&ptime);
+								if(dbg='1') then print("leR00s "&tost(leon_slreg(index))&" from "&tost(r.haddr(31 downto 0))&" @ "&ptime); end if;
 							end if;
 						else
 							-- preparing write transfer in next cycle according to AMBA Spec (Rev 2.0)
@@ -191,7 +202,7 @@ begin
 						-- invalid address
 						tindex := 27;
 						index := 27;
-						print("E01s "&tost(r.haddr(31 downto 0))&" @ "&ptime);
+						if(dbg='1') then  print("leE01s "&tost(r.haddr(31 downto 0))&" @ "&ptime); end if;
 					end if;
 				end if;
 					-- 2nd cycle of two-cycle response according to AMBA Spec (Rev 2.0) Chapter 3.9.3
@@ -206,38 +217,177 @@ begin
 		else
 			r := ahbs_in_none; -- slave not selected, no input
 		end if;
-		slvo <= t; -- output ahb_slv_out buffer
+		leon_slvo <= t; -- output ahb_slv_out buffer
 	end if;
 	---------------------------------------------------------------------
-	if(slreg(address2index(x"10"))(6) = '1') then
-		if(slreg(address2index(x"30"))(7) = '0') then
-			slreg(address2index(x"34")) <= slreg(address2index(x"14"));
-			slreg(address2index(x"38")) <= slreg(address2index(x"18"));
-			slreg(address2index(x"3c")) <= slreg(address2index(x"1c"));
-			slreg(address2index(x"40")) <= slreg(address2index(x"20"));
-			slreg(address2index(x"44")) <= slreg(address2index(x"24"));
-			slreg(address2index(x"30"))(7) <= '1';
-		elsif(slreg(address2index(x"50"))(7) = '0') then
-			slreg(address2index(x"54")) <= slreg(address2index(x"14"));
-			slreg(address2index(x"58")) <= slreg(address2index(x"18"));
-			slreg(address2index(x"5c")) <= slreg(address2index(x"1c"));
-			slreg(address2index(x"60")) <= slreg(address2index(x"20"));
-			slreg(address2index(x"64")) <= slreg(address2index(x"24"));
-			slreg(address2index(x"50"))(7) <= '1';
-		elsif(slreg(address2index(x"70"))(7) = '0') then
-			slreg(address2index(x"74")) <= slreg(address2index(x"14"));
-			slreg(address2index(x"78")) <= slreg(address2index(x"18"));
-			slreg(address2index(x"7c")) <= slreg(address2index(x"1c"));
-			slreg(address2index(x"80")) <= slreg(address2index(x"20"));
-			slreg(address2index(x"84")) <= slreg(address2index(x"24"));
-			slreg(address2index(x"70"))(7) <= '1';
+	if(leon_slreg(a2i(x"10"))(6) = '1') then
+		if(io_slreg(a2i(x"30"))(7) = '0') then
+			io_slreg(a2i(x"34")) <= leon_slreg(a2i(x"14"));
+			io_slreg(a2i(x"38")) <= leon_slreg(a2i(x"18"));
+			io_slreg(a2i(x"3c")) <= leon_slreg(a2i(x"1c"));
+			io_slreg(a2i(x"40")) <= leon_slreg(a2i(x"20"));
+			io_slreg(a2i(x"44")) <= leon_slreg(a2i(x"24"));
+			io_slreg(a2i(x"30"))(7) <= '1';
+			leon_slreg(a2i(x"10"))(6) <= '0';
+			leon_slreg(a2i(x"10"))(7) <= '0';
+		elsif(io_slreg(a2i(x"50"))(7) = '0') then
+			io_slreg(a2i(x"54")) <= leon_slreg(a2i(x"14"));
+			io_slreg(a2i(x"58")) <= leon_slreg(a2i(x"18"));
+			io_slreg(a2i(x"5c")) <= leon_slreg(a2i(x"1c"));
+			io_slreg(a2i(x"60")) <= leon_slreg(a2i(x"20"));
+			io_slreg(a2i(x"64")) <= leon_slreg(a2i(x"24"));
+			io_slreg(a2i(x"50"))(7) <= '1';
+			leon_slreg(a2i(x"10"))(6) <= '0';
+			leon_slreg(a2i(x"10"))(7) <= '0';
+		elsif(io_slreg(a2i(x"70"))(7) = '0') then
+			io_slreg(a2i(x"74")) <= leon_slreg(a2i(x"14"));
+			io_slreg(a2i(x"78")) <= leon_slreg(a2i(x"18"));
+			io_slreg(a2i(x"7c")) <= leon_slreg(a2i(x"1c"));
+			io_slreg(a2i(x"80")) <= leon_slreg(a2i(x"20"));
+			io_slreg(a2i(x"84")) <= leon_slreg(a2i(x"24"));
+			io_slreg(a2i(x"70"))(7) <= '1';
+			leon_slreg(a2i(x"10"))(6) <= '0';
+			leon_slreg(a2i(x"10"))(7) <= '0';
+		else
+			leon_slreg(a2i(x"10"))(7) <= '1';
 		end if;
+	else 
+	------------- reset full indicator if send is reset
+		io_slreg(a2i(x"10"))(7) <= '0';
 	end if;
-  	slvo.hsplit   <= (others => '0'); 
-  	slvo.hirq    <= (others => '0');
-  	slvo.hconfig <= hconfig;
-  	slvo.hindex  <= hindex;
 	
-end process;
+	-- LEON Side AHB Slave
+	leon_slvo.hconfig <= hconfig_leon;
+  	leon_slvo.hindex  <= leon_hindex;
+  	leon_slvo.hsplit   <= (others => '0'); 
+  	leon_slvo.hirq    <= (others => '0');
+	
+end process leon_ni;
+
+io_ni: process(clk, rst)
+--variable leon_slreg_buffer : std_logic_vector(31 downto 0);
+variable queue : integer := 0;
+variable index : integer := 27;
+variable tindex : integer := 27;
+variable t : ahb_slv_out_type;
+variable r : ahb_slv_in_type;
+begin
+	if(rst = '0') then
+		t := ahbs_none;
+		r := ahbs_in_none;
+		io_slreg <= (others => (others => '0'));
+		io_slvo <= ahbs_none;
+	elsif(clk'event and clk = '1') then
+		r := io_slvi; -- input ahb_slv_in buffer
+		if(r.hsel(io_hindex) = '1') then
+			if(t.hresp = "00") then 
+				if(r.htrans(1) = '1') then
+					---- Write hwdata ----------------------------------------
+					if(tindex >= 0 and tindex < 27) then
+						io_slreg(tindex) <= r.hwdata(31 downto 0);
+						queue := 1;
+						if(dbg='1') then print("ioW01s "&tost(r.hwdata(31 downto 0))&" @ "&ptime); end if;
+					else
+						-- leon_slvo.hresp    <= "01";
+						-- print("W01v "&tost(leon_slvi.hwdata(31 downto 0)))&" @ "&ptime);
+						-- possible errors were handled last cycle
+					end if;
+					---- Read AHBdata ----------------------------------------
+					index := a2i(r.haddr(7 downto 0));
+					if(index >= 0 and index < 27) then
+						-- haddr is legit
+						if(r.hwrite = '0') then
+							if(queue = 1 and tindex = index) then
+								-- immediate readout after write; wait for legit data; not within AMBA Spec
+								-- t.hresp <= "10";
+								t.hresp := "10";
+								t.hready := '0';
+								queue := 0;   -- don't come here again unless there was a write transfer
+								tindex := 27; -- deleting index so no illegal write is initiated in write section
+								if(dbg='1') then print("ioD00s "&tost(r.haddr(31 downto 0))&" @ "&ptime); end if;
+							else
+								-- Basic read transfer according to AMBA Spec (Rev 2.0)
+								t.hready := '1';
+								t.hrdata(31 downto 0) := io_slreg(index);
+								t.hresp := "00";
+								tindex := 27; -- deleting index so no illegal write is initiated in write section
+								if(dbg='1') then print("ioR00s "&tost(io_slreg(index))&" from "&tost(r.haddr(31 downto 0))&" @ "&ptime); end if;
+							end if;
+						else
+							-- preparing write transfer in next cycle according to AMBA Spec (Rev 2.0)
+							tindex := index; -- saving index for next cycle
+							t.hresp := "00";
+							t.hready := '1';
+							-- print("W00s "&tost(r.haddr(31 downto 0))&" @ "&ptime);
+						end if;
+					else
+						-- initiating two-cycle response according to AMBA Spec (Rev 2.0) Chapter 3.9.3
+						t.hresp := "01";
+						t.hready := '0';
+						-- invalid address
+						tindex := 27;
+						index := 27;
+						if(dbg='1') then print("ioE01s "&tost(r.haddr(31 downto 0))&" @ "&ptime); end if;
+					end if;
+				end if;
+					-- 2nd cycle of two-cycle response according to AMBA Spec (Rev 2.0) Chapter 3.9.3
+			elsif(t.hresp /= "00" and t.hready = '1') then --------
+				if(r.htrans = "00") then
+					t.hresp := "00";
+				end if;
+					-- 1st cycle of two-cycle response according to AMBA Spec (Rev 2.0) Chapter 3.9.3
+			else 	-------
+				t.hready := '1';
+			end if;
+		else
+			r := ahbs_in_none; -- slave not selected, no input
+		end if;
+		io_slvo <= t; -- output ahb_slv_out buffer
+	end if;
+	---------------------------------------------------------------------
+	if(io_slreg(a2i(x"10"))(6) = '1') then
+		if(leon_slreg(a2i(x"30"))(7) = '0') then
+			leon_slreg(a2i(x"34")) <= io_slreg(a2i(x"14"));
+			leon_slreg(a2i(x"38")) <= io_slreg(a2i(x"18"));
+			leon_slreg(a2i(x"3c")) <= io_slreg(a2i(x"1c"));
+			leon_slreg(a2i(x"40")) <= io_slreg(a2i(x"20"));
+			leon_slreg(a2i(x"44")) <= io_slreg(a2i(x"24"));
+			leon_slreg(a2i(x"30"))(7) <= '1';
+			-----------------------------------
+			io_slreg(a2i(x"10"))(6) <= '0';
+			io_slreg(a2i(x"10"))(7) <= '0';
+		elsif(leon_slreg(a2i(x"50"))(7) = '0') then
+			leon_slreg(a2i(x"54")) <= io_slreg(a2i(x"14"));
+			leon_slreg(a2i(x"58")) <= io_slreg(a2i(x"18"));
+			leon_slreg(a2i(x"5c")) <= io_slreg(a2i(x"1c"));
+			leon_slreg(a2i(x"60")) <= io_slreg(a2i(x"20"));
+			leon_slreg(a2i(x"64")) <= io_slreg(a2i(x"24"));
+			leon_slreg(a2i(x"50"))(7) <= '1';
+			-----------------------------------
+			io_slreg(a2i(x"10"))(6) <= '0';
+			io_slreg(a2i(x"10"))(7) <= '0';
+		elsif(leon_slreg(a2i(x"70"))(7) = '0') then
+			leon_slreg(a2i(x"74")) <= io_slreg(a2i(x"14"));
+			leon_slreg(a2i(x"78")) <= io_slreg(a2i(x"18"));
+			leon_slreg(a2i(x"7c")) <= io_slreg(a2i(x"1c"));
+			leon_slreg(a2i(x"80")) <= io_slreg(a2i(x"20"));
+			leon_slreg(a2i(x"84")) <= io_slreg(a2i(x"24"));
+			leon_slreg(a2i(x"70"))(7) <= '1';
+			io_slreg(a2i(x"10"))(6) <= '0';
+			io_slreg(a2i(x"10"))(7) <= '0';
+		else
+			io_slreg(a2i(x"10"))(7) <= '1';
+		end if;
+	else
+	------------- reset full indicator if send is reset
+		io_slreg(a2i(x"10"))(7) <= '0';
+	end if;
+	-- IO Side AHB Slave
+  	io_slvo.hconfig <= hconfig_io;
+  	io_slvo.hindex  <= io_hindex;
+  	io_slvo.hsplit   <= (others => '0'); 
+  	io_slvo.hirq    <= (others => '0');
+	
+end process io_ni;
 
 end rtl;
