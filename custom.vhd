@@ -46,33 +46,52 @@ end record;
 constant virtioc_hconfig_def : virtioc_hconfig := (0, 0, VENDOR_GAISLER, 0, 0, 3, 0);
 --constant dmai_none : ahb_dma_in_type := ((others => '0'), (others => '0'), '0', '0', '0', '0', '0', (others => '0'));
 
+type noc_flit_ahb is record
+	vio_header : std_logic_vector(31 downto 0); -- Virtual Controller Infos
+	ahb_header : std_logic_vector(31 downto 0); -- AHB Control Signals
+	ahb_haddr : std_logic_vector(31 downto 0);  -- AHB Address
+	ahb_hdata : std_logic_vector(31 downto 0);  -- AHB Data
+end record;
+
+constant noc_flit_ahb_none : noc_flit_ahb := ((others => '0'), (others => '0'), (others => '0'), (others => '0'));
+
+type noc_io_config is record
+	vio_header : std_logic_vector(31 downto 0);
+	io_resource : std_logic_vector(31 downto 0);
+	io_state : std_logic_vector(31 downto 0);
+end record;
+
+constant noc_io_config_none : noc_io_config := ((others => '0'), (others => '0'), (others => '0'));
+
 component top_noc
 	 generic (
     leon_hindex : integer := 0;
-    leon_haddr  : integer := 0;
+    leon_haddr  : integer := 16#200#;
     hmask       : integer := 16#0ff#;
 	 io_hindex   : integer := 0;
-    io_haddr    : integer := 0;
+    io_haddr    : integer := 16#200#;
 	 dbg			 : std_logic := '0');
     port (
-    rst     : in  std_ulogic;
-    clk     : in  std_ulogic;
-    leon_slvi  : in   ahb_slv_in_type;
-    leon_slvo  : out  ahb_slv_out_type;
+    rst     : in  std_logic;
+    clk     : in  std_logic;
+	 io_irq	: out std_logic;
+    le_slvi  : in   ahb_slv_in_type;
+    le_slvo  : out  ahb_slv_out_type;
 	 io_slvi    : in   ahb_slv_in_type;
     io_slvo    : out  ahb_slv_out_type);
 end component;
 
-component virtioc
-	generic (
-    hconfig_noc  : virtioc_hconfig := virtioc_hconfig_def;
-	 bsize 		  : integer := 4); 
-   port (
-      rst  : in  std_ulogic;
-      clk  : in  std_ulogic;
-      ahbi_noc : in  ahb_mst_in_type;
-      ahbo_noc : out ahb_mst_out_type
-      );
+component vnic
+	generic (nic_hindex : integer := 0);
+    port ( res : in  STD_LOGIC;
+           clk : in  STD_LOGIC;
+			  nic_irq : in std_logic;
+			  --msti : in  ahb_mst_in_type;
+			  --msto : out ahb_mst_out_type;
+			  slvi : in ahb_slv_in_type;
+			  slvo : out ahb_slv_out_type;
+			  nici : out ahb_slv_in_type;
+			  nico : in ahb_slv_out_type);
 end component;
 
 type noc_transfer is record

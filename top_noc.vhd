@@ -47,10 +47,12 @@ entity top_noc is
     io_haddr    : integer := 0;
 	 dbg			 : std_logic := '0');
     port (
-    rst     : in  std_ulogic;
-    clk     : in  std_ulogic;
-    leon_slvi  : in   ahb_slv_in_type;
-    leon_slvo  : out  ahb_slv_out_type;
+    rst     : in  std_logic;
+    clk     : in  std_logic;
+	 le_irq	: out std_logic;
+	 io_irq		: out std_logic;
+    le_slvi  : in   ahb_slv_in_type;
+    le_slvo  : out  ahb_slv_out_type;
 	 io_slvi    : in   ahb_slv_in_type;
     io_slvo    : out  ahb_slv_out_type);
 end top_noc;
@@ -85,19 +87,23 @@ variable queue : integer := 0;
 variable index : integer := 27;
 variable tindex : integer := 27;
 variable basei : std_logic_vector(7 downto 0);
+variable state : integer range 0 to 2;
 variable t : ahb_slv_out_type;
 variable r : ahb_slv_in_type;
 begin
 	if(rst = '0') then
 		t := ahbs_none;
 		r := ahbs_in_none;
+		le_irq <= '0';
 		lef <= '0';
+		lev <= '0';
 		le_reg <= (others => (others => '0'));
-		leon_slvo <= ahbs_none;
+		le_slvo <= ahbs_none;
 		basei := x"30";
 	elsif(clk'event and clk = '1') then
-		r := leon_slvi; -- input ahb_slv_in buffer
+		r := le_slvi; -- input ahb_slv_in buffer
 		if(r.hsel(leon_hindex) = '1') then
+			state := 1;
 			if(t.hresp = "00") then 
 				if(r.htrans(1) = '1') then
 					---- Write hwdata ----------------------------------------
@@ -106,8 +112,8 @@ begin
 						queue := 1;
 						if(dbg='1') then print("leW01s "&tost(r.hwdata(31 downto 0))&" @ "&ptime); end if;
 					else
-						-- leon_slvo.hresp    <= "01";
-						-- print("W01v "&tost(leon_slvi.hwdata(31 downto 0)))&" @ "&ptime);
+						-- le_slvo.hresp    <= "01";
+						-- print("W01v "&tost(le_slvi.hwdata(31 downto 0)))&" @ "&ptime);
 						-- possible errors were handled last cycle
 					end if;
 					---- Read AHBdata ----------------------------------------
@@ -158,15 +164,23 @@ begin
 				t.hready := '1';
 			end if;
 		else
+			t := ahbs_none;
+			if(state = 1) then
+				if(r.hwrite = '1') then
+					
+				else
+					
+				end if;
+			end if;
 			r := ahbs_in_none; -- slave not selected, no input
 		end if;
-		leon_slvo <= t; -- output ahb_slv_out buffer
+		le_slvo <= t; -- output ahb_slv_out buffer
 		
 		-- Write to IO
 		if(iof = '0') then
-			le_reg(a2i(x"10"))(7) <= '0';
+			le_reg(a2i(x"10"))(7) <= '0'; -- IO Side ready
 			if(le_reg(a2i(x"10"))(6) = '1') then
-				lev <= '1';
+				lev <= '1'; -- transfer data valid for IO Side
 				le_transfer(0) <= le_reg(a2i(x"14"));
 				le_transfer(1) <= le_reg(a2i(x"18"));
 				le_transfer(2) <= le_reg(a2i(x"1c"));
@@ -174,18 +188,13 @@ begin
 				le_transfer(4) <= le_reg(a2i(x"24"));
 				le_reg(a2i(x"10"))(6) <= '0';
 			else
-				lev <= '0';
+				lev <= '0'; -- transfer data invalid for IO Side
 			end if;
 		else
 			le_reg(a2i(x"10"))(7) <= '1';
 		end if;
 		-- Read from IO
 		if(iov = '1') then
-			-- find next free LEON RX Buffer
-			if(basei = x"30") then basei := x"50";
-			elsif(basei = x"50") then basei := x"70";
-			elsif(basei = x"70") then basei := x"30";
-			end if;
 			-- Read Flit to LEON RX Buffer
 			if(le_reg(a2i(basei))(7) = '0') then
 				le_reg(a2i(basei+x"04")) <= io_transfer(0);
@@ -194,21 +203,35 @@ begin
 				le_reg(a2i(basei+x"10")) <= io_transfer(3);
 				le_reg(a2i(basei+x"14")) <= io_transfer(4);
 				le_reg(a2i(basei))(7) <= '1';
+				lef <= '0'; -- not full
+			else
+				lef <= '1'; -- full
 			end if;
 			-- LEON RX Buffer full?
-			if(le_reg(a2i(x"30"))(7) = '1' and le_reg(a2i(x"50"))(7) = '1' and le_reg(a2i(x"70"))(7) = '1') then
-				lef <= '1';
-			else
-				lef <= '0';
+			--if(le_reg(a2i(x"30"))(7) = '1' and le_reg(a2i(x"50"))(7) = '1' and le_reg(a2i(x"70"))(7) = '1') then
+			--	lef <= '1';
+			--else
+			--	lef <= '0';
+			--end if;
+			-- find next free LEON RX Buffer
+			if(basei = x"30") then basei := x"50";
+			elsif(basei = x"50") then basei := x"70";
+			elsif(basei = x"70") then basei := x"30";
 			end if;
+		end if;
+		-- LEON RX Buffer empty?
+		if(le_reg(a2i(x"30"))(7) = '1' or le_reg(a2i(x"50"))(7) = '1' or le_reg(a2i(x"70"))(7) = '1') then
+			le_irq <= '1';
+		else
+			le_irq <= '0';
 		end if;
 	end if;
 	
 	-- LEON Side AHB Slave
-	leon_slvo.hconfig <= hconfig_leon;
-  	leon_slvo.hindex  <= leon_hindex;
-  	leon_slvo.hsplit   <= (others => '0'); 
-  	leon_slvo.hirq    <= (others => '0');
+	le_slvo.hconfig <= hconfig_leon;
+  	le_slvo.hindex  <= leon_hindex;
+  	le_slvo.hsplit   <= (others => '0'); 
+  	le_slvo.hirq    <= (others => '0');
 	
 end process leon_ni;
 
@@ -218,12 +241,14 @@ variable queue : integer := 0;
 variable index : integer := 27;
 variable tindex : integer := 27;
 variable basei : std_logic_vector(7 downto 0);
+variable state : integer range 0 to 2;
 variable t : ahb_slv_out_type;
 variable r : ahb_slv_in_type;
 begin
 	if(rst = '0') then
 		t := ahbs_none;
 		r := ahbs_in_none;
+		io_irq <= '0';
 		iof <= '0';
 		iov <= '0';
 		io_reg <= (others => (others => '0'));
@@ -240,8 +265,8 @@ begin
 						queue := 1;
 						if(dbg='1') then print("ioW01s "&tost(r.hwdata(31 downto 0))&" @ "&ptime); end if;
 					else
-						-- leon_slvo.hresp    <= "01";
-						-- print("W01v "&tost(leon_slvi.hwdata(31 downto 0)))&" @ "&ptime);
+						-- le_slvo.hresp    <= "01";
+						-- print("W01v "&tost(le_slvi.hwdata(31 downto 0)))&" @ "&ptime);
 						-- possible errors were handled last cycle
 					end if;
 					---- Read AHBdata ----------------------------------------
@@ -292,15 +317,23 @@ begin
 				t.hready := '1';
 			end if;
 		else
+			t := ahbs_none;
+			if(state = 1) then
+				if(r.hwrite = '1') then
+					
+				else
+					
+				end if;
+			end if;
 			r := ahbs_in_none; -- slave not selected, no input
 		end if;
 		io_slvo <= t; -- output ahb_slv_out buffer
 		
 		-- Write to LEON
 		if(lef = '0') then
-			io_reg(a2i(x"10"))(7) <= '0';
+			io_reg(a2i(x"10"))(7) <= '0'; -- LEON side ready to write
 			if(io_reg(a2i(x"10"))(6) = '1') then
-				iov <= '1';
+				iov <= '1'; -- transfer data valid for LEON Side
 				io_transfer(0) <= io_reg(a2i(x"14"));
 				io_transfer(1) <= io_reg(a2i(x"18"));
 				io_transfer(2) <= io_reg(a2i(x"1c"));
@@ -308,19 +341,14 @@ begin
 				io_transfer(4) <= io_reg(a2i(x"24"));
 				io_reg(a2i(x"10"))(6) <= '0';
 			else
-				iov <= '0';
+				iov <= '0'; -- transfer data invalid for LEON Side
 			end if;
 		else
 			io_reg(a2i(x"10"))(7) <= '1';
 		end if;
 		-- Read from LEON
 		if(lev = '1') then
-			-- find next free IO RX Buffer
-			if(basei = x"30") then basei := x"50";
-			elsif(basei = x"50") then basei := x"70";
-			elsif(basei = x"70") then basei := x"30";
-			end if;
-			-- Write Flit to leon RX Buffer
+			-- Write Flit to IO RX Buffer
 			if(io_reg(a2i(basei))(7) = '0') then
 				io_reg(a2i(basei+x"04")) <= le_transfer(0);
 				io_reg(a2i(basei+x"08")) <= le_transfer(1);
@@ -328,13 +356,27 @@ begin
 				io_reg(a2i(basei+x"10")) <= le_transfer(3);
 				io_reg(a2i(basei+x"14")) <= le_transfer(4);
 				io_reg(a2i(basei))(7) <= '1';
+				iof <= '0'; -- not full
+			else
+				iof <= '1'; -- full
 			end if;
 			-- IO RX Buffer full?
-			if(io_reg(a2i(x"30"))(7) = '1' and io_reg(a2i(x"50"))(7) = '1' and io_reg(a2i(x"70"))(7) = '1') then
-				iof <= '1';
-			else
-				iof <= '0';
+			--if(io_reg(a2i(x"30"))(7) = '1' and io_reg(a2i(x"50"))(7) = '1' and io_reg(a2i(x"70"))(7) = '1') then
+			--	iof <= '1';
+			--else
+			--	iof <= '0';
+			--end if;
+			-- find next free IO RX Buffer
+			if(basei = x"30") then basei := x"50";
+			elsif(basei = x"50") then basei := x"70";
+			elsif(basei = x"70") then basei := x"30";
 			end if;
+		end if;
+		-- IO RX Buffer empty?
+		if(io_reg(a2i(x"30"))(7) = '1' or io_reg(a2i(x"50"))(7) = '1' or io_reg(a2i(x"70"))(7) = '1') then
+			io_irq <= '1';
+		else
+			io_irq <= '0';
 		end if;
 	end if;
 	-- IO Side AHB Slave

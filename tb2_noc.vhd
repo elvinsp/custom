@@ -29,6 +29,7 @@ LIBRARY ieee;
 USE ieee.std_logic_1164.ALL;
 library gaisler;
 use gaisler.ahbtbp.all;
+use gaisler.uart.all;
 use work.custom.all;
 library grlib;
 use grlib.amba.all;
@@ -49,6 +50,11 @@ ARCHITECTURE noc_simple_transfer OF tb2_noc IS
    --Inputs
    signal rstn : std_logic := '0';
    signal clkm : std_logic := '0';
+	signal nic_irq : std_logic := '0';
+	signal apbi  : apb_slv_in_type;
+	signal apbo  : apb_slv_out_vector := (others => apb_none);
+	signal vn_ahbsi : ahb_slv_in_type;
+	signal vn_ahbso : ahb_slv_out_type;
    signal le_ahbsi, io_ahbsi : ahb_slv_in_type;
    signal le_ahbso, io_ahbso : ahb_slv_out_vector := (others => ahbs_none);
    signal le_ahbmi, io_ahbmi : ahb_mst_in_type;
@@ -56,6 +62,8 @@ ARCHITECTURE noc_simple_transfer OF tb2_noc IS
 	signal le_ctrl, io_ctrl  : ahbtb_ctrl_type;
 	--signal le_ctrli : ahbtbm_le_ctrl_in_type;
 	--signal le_ctrlo : ahbtbm_le_ctrl_out_type;
+	signal u1i, dui : uart_in_type;
+	signal u1o, duo : uart_out_type;
 
    -- Clock period definitions
    constant clk_period : time := 20 ns;
@@ -70,7 +78,11 @@ BEGIN
 	 io_hindex => 0,
 	 io_haddr => 16#600#,
     hmask => 16#fff#)
-    port map (rstn, clkm, le_ahbsi, le_ahbso(0), io_ahbsi, io_ahbso(0));
+    port map (rstn, clkm, nic_irq, le_ahbsi, le_ahbso(0), vn_ahbsi, vn_ahbso);
+	 
+	vnic0 : vnic
+	generic map(nic_hindex => 0)
+	port map(rstn, clkm, nic_irq, io_ahbsi, io_ahbso(0), vn_ahbsi, vn_ahbso);
 		  
 	leon_ahb0 : ahbctrl       -- AHB arbiter/multiplexer
 				generic map (defmast => 0, split => 0, 
@@ -89,6 +101,19 @@ BEGIN
 	io_ahbtbm0 : ahbtbm
 		generic map(hindex => 1) -- AMBA master index 0
 		port map(rstn, clkm, io_ctrl.i, io_ctrl.o, io_ahbmi, io_ahbmo(1));
+		
+	--apb0 : apbctrl            -- AHB/APB bridge
+		--generic map (hindex => 1, haddr => 16#800#, nslaves => 8)
+		--port map (rstn, clkm, io_ahbsi, io_ahbso(1), apbi, apbo );
+		
+	--uart1 : apbuart         -- UART 1
+		--generic map (pindex => 1, paddr => 1,  pirq => 2, console => 0, fifosize => 8)
+		--port map (rstn, clkm, apbi, apbo(1), u1i, u1o);
+		
+		--u1i.extclk <= '0';
+		--u1i.ctsn <= '0';
+		--rxd1_pad : inpad generic map (tech => padtech) port map (rxd1, u1i.rxd); 
+		--txd1_pad : outpad generic map (tech => padtech) port map (txd1, u1o.txd);
 
    -- Clock process definitions
    clk_process :process
@@ -121,6 +146,9 @@ BEGIN
 		ahbwrite(x"40000014", x"11111111", "10", 2, false , le_ctrl);
 		wait until clkm'event and clkm='1';
 		ahbwrite(x"40000010", x"10000040", "10", 2, false , le_ctrl);
+		wait until clkm'event and clkm='1';
+		ahbtbmidle(false, le_ctrl);
+		wait until clkm'event and clkm='1';
 		wait until clkm'event and clkm='1';
 		ahbwrite(x"40000018", x"44444444", "10", 2, false , le_ctrl);
 		wait until clkm'event and clkm='1';
