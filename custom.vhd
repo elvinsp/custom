@@ -32,20 +32,6 @@ package custom is
 -- procedure <procedure_name> (<type_declaration> <constant_name>	: in <type_declaration>);
 --
 
-
-type virtioc_hconfig is record
-	 hindex  : integer;
-    hirq    : integer;
-    venid   : integer;
-    devid   : integer;
-    version : integer;
-    chprot  : integer;
-    incaddr : integer;
-end record;
-
-constant virtioc_hconfig_def : virtioc_hconfig := (0, 0, VENDOR_GAISLER, 0, 0, 3, 0);
---constant dmai_none : ahb_dma_in_type := ((others => '0'), (others => '0'), '0', '0', '0', '0', '0', (others => '0'));
-
 type noc_flit_ahb is record
 	vio_header : std_logic_vector(31 downto 0); -- Virtual Controller Infos
 	ahb_header : std_logic_vector(31 downto 0); -- AHB Control Signals
@@ -74,7 +60,8 @@ component top_noc
     port (
     rst     : in  std_logic;
     clk     : in  std_logic;
-	 io_irq	: out std_logic;
+	 le_irq	: out std_logic;
+	 --io_irq	: out std_logic;
     le_slvi  : in   ahb_slv_in_type;
     le_slvo  : out  ahb_slv_out_type;
 	 io_slvi    : in   ahb_slv_in_type;
@@ -93,17 +80,6 @@ component vnic
 			  nici : out ahb_slv_in_type;
 			  nico : in ahb_slv_out_type);
 end component;
-
-type noc_transfer is record
-	src	 : integer range 0 to 3;
-	dst	 : integer range 0 to 3;
-	len	 : integer range 1 to 5;
-   df0    : std_logic_vector(31 downto 0);
-   df1    : std_logic_vector(31 downto 0);
-   df2	 : std_logic_vector(31 downto 0);
-   df3    : std_logic_vector(31 downto 0);
-   df4    : std_logic_vector(31 downto 0);
-end record;
 
 function a2i(haddr : std_logic_vector(7 downto 0))
   return integer;

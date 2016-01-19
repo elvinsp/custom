@@ -87,7 +87,7 @@ variable queue : integer := 0;
 variable index : integer := 27;
 variable tindex : integer := 27;
 variable basei : std_logic_vector(7 downto 0);
-variable state : integer range 0 to 2;
+variable state : integer range 0 to 1;
 variable t : ahb_slv_out_type;
 variable r : ahb_slv_in_type;
 begin
@@ -165,17 +165,23 @@ begin
 			end if;
 		else
 			t := ahbs_none;
-			if(state = 1) then
-				if(r.hwrite = '1') then
-					
-				else
-					
+			if(state = 1) then -- execute last cmd after hsel low
+				if(tindex >= 0 and tindex < 27) then -- tindex only in range if last cmd was write else read
+					le_reg(tindex) <= r.hwdata(31 downto 0);
+					t.hresp := "00";
+					t.hready := '1';
+					if(dbg='1') then print("leW01s "&tost(r.hwdata(31 downto 0))&" @ "&ptime); end if;
+				else 
+					t.hrdata(31 downto 0) := le_reg(index);
+					t.hresp := "00";
+					t.hready := '1';
 				end if;
+				state := 0;
 			end if;
 			r := ahbs_in_none; -- slave not selected, no input
 		end if;
 		le_slvo <= t; -- output ahb_slv_out buffer
-		
+		--------------------------------------------------------------------------------------------------------
 		-- Write to IO
 		if(iof = '0') then
 			le_reg(a2i(x"10"))(7) <= '0'; -- IO Side ready
@@ -197,6 +203,7 @@ begin
 		if(iov = '1') then
 			-- Read Flit to LEON RX Buffer
 			if(le_reg(a2i(basei))(7) = '0') then
+				--if(conv_integer(io_reg(a2i(basei))(7)) >= 1)
 				le_reg(a2i(basei+x"04")) <= io_transfer(0);
 				le_reg(a2i(basei+x"08")) <= io_transfer(1);
 				le_reg(a2i(basei+x"0c")) <= io_transfer(2);
@@ -241,7 +248,7 @@ variable queue : integer := 0;
 variable index : integer := 27;
 variable tindex : integer := 27;
 variable basei : std_logic_vector(7 downto 0);
-variable state : integer range 0 to 2;
+variable state : integer range 0 to 1;
 variable t : ahb_slv_out_type;
 variable r : ahb_slv_in_type;
 begin
@@ -257,6 +264,7 @@ begin
 	elsif(clk'event and clk = '1') then
 		r := io_slvi; -- input ahb_slv_in buffer
 		if(r.hsel(io_hindex) = '1') then
+			state := 1;
 			if(t.hresp = "00") then 
 				if(r.htrans(1) = '1') then
 					---- Write hwdata ----------------------------------------
@@ -277,7 +285,7 @@ begin
 							if(queue = 1 and tindex = index) then
 								-- immediate readout after write; wait for legit data; not within AMBA Spec
 								-- t.hresp <= "10";
-								t.hresp := "10";
+								t.hresp := "00";
 								t.hready := '0';
 								queue := 0;   -- don't come here again unless there was a write transfer
 								tindex := 27; -- deleting index so no illegal write is initiated in write section
@@ -319,16 +327,23 @@ begin
 		else
 			t := ahbs_none;
 			if(state = 1) then
-				if(r.hwrite = '1') then
-					
+				---- Write hwdata ----------------------------------------
+				if(tindex >= 0 and tindex < 27) then
+					io_reg(tindex) <= r.hwdata(31 downto 0);
+					t.hresp := "00";
+					t.hready := '1';
+					if(dbg='1') then print("ioW01s "&tost(r.hwdata(31 downto 0))&" @ "&ptime); end if;
 				else
-					
+					t.hrdata(31 downto 0) := io_reg(index);
+					t.hresp := "00";
+					t.hready := '1';
 				end if;
+				state := 0;
 			end if;
 			r := ahbs_in_none; -- slave not selected, no input
 		end if;
 		io_slvo <= t; -- output ahb_slv_out buffer
-		
+		------------------------------------------------------------------------------------------------
 		-- Write to LEON
 		if(lef = '0') then
 			io_reg(a2i(x"10"))(7) <= '0'; -- LEON side ready to write

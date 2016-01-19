@@ -76,9 +76,9 @@ BEGIN
     leon_hindex => 0,
     leon_haddr => 16#400#,
 	 io_hindex => 0,
-	 io_haddr => 16#600#,
+	 io_haddr => 16#400#,
     hmask => 16#fff#)
-    port map (rstn, clkm, nic_irq, le_ahbsi, le_ahbso(0), vn_ahbsi, vn_ahbso);
+    port map (rstn, clkm, nic_irq, vn_ahbsi, vn_ahbso, le_ahbsi, le_ahbso(0));
 	 
 	vnic0 : vnic
 	generic map(nic_hindex => 0)
@@ -154,11 +154,20 @@ BEGIN
 		wait until clkm'event and clkm='1';
 		ahbwrite(x"40000010", x"10000040", "10", 2, false , le_ctrl);
 		wait until clkm'event and clkm='1';
-		ahbread(x"40000014", x"11111111", "10", 2, false , le_ctrl);
+		ahbtbmidle(false, le_ctrl);
 		wait until clkm'event and clkm='1';
-		ahbread(x"40000010", x"10000000", "10", 2, false , le_ctrl);
 		wait until clkm'event and clkm='1';
-		--wait until clkm'event and clkm='1';
+		ahbwrite(x"4000001c", x"88888888", "10", 2, false , le_ctrl);
+		wait until clkm'event and clkm='1';
+		ahbwrite(x"40000010", x"10000040", "10", 2, false , le_ctrl);
+		wait until clkm'event and clkm='1';
+		ahbtbmidle(false, le_ctrl);
+		wait until clkm'event and clkm='1';
+		wait until clkm'event and clkm='1';
+		ahbwrite(x"40000014", x"22222222", "10", 2, false , le_ctrl);
+		wait until clkm'event and clkm='1';
+		ahbwrite(x"40000010", x"10000040", "10", 2, false , le_ctrl);
+		wait until clkm'event and clkm='1';
 		ahbtbmidle(false, le_ctrl);
 		wait for 100 ns;
 		wait for 100 ns;

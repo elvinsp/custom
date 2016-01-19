@@ -50,27 +50,42 @@ entity vnic is
 end vnic;
 
 architecture Behavioral of vnic is
---signal start : std_logic;
-signal ahb_rx_flit : noc_flit_ahb;
+
+-- typedefs
+type flits is array (0 to 4) of std_logic_vector(31 downto 0);
+type noc_transfer_reg is record
+	state : std_logic_vector(31 downto 0);
+	flit :  flits;
+end record;
+
+-- constants
+constant flit_none : flits := ((others => '0'), (others => '0'), (others => '0'), (others => '0'), (others => '0'));
+constant noc_transfer_none : noc_transfer_reg := ((others => '0'), flit_none);
+
+-- signals
+signal noc_rx : noc_transfer_reg; -- data handover register from NI-AHB-Interface to processing
+signal noc_rx_ready, noc_rx_ack : std_logic; -- handshake signals for data handover
+
 begin
 
 nic_inf: process(clk, res)
 variable tnic : ahb_slv_in_type;
 variable rnic : ahb_slv_out_type;
-variable ahb_flit : noc_flit_ahb;
+variable noc_reg : noc_transfer_reg;
 variable basei : std_logic_vector(31 downto 0);
-variable noc_rx : std_logic_vector(31 downto 0);
 variable rw, start : std_logic;
 variable state : integer range 0 to 7;
+variable flit_index : integer range 0 to 4;
 begin
 	if(res = '0') then
-		ahb_rx_flit <= noc_flit_ahb_none;
-		ahb_flit := noc_flit_ahb_none;
+		noc_rx <= noc_transfer_none;
+		noc_rx_ready <= '0';
+		noc_reg := noc_transfer_none;
 		tnic := ahbs_in_none;
 		rnic := ahbs_none;
-		basei := x"60000030";
-		noc_rx := x"00000000";
+		basei := x"60000070"; -- will be set to x"60000030" immediately
 		state := 0;
+		flit_index := 0;
 	elsif(clk'event and clk = '1') then
 		rnic := nico;
 		if(nic_irq = '1') then
@@ -78,49 +93,65 @@ begin
 				tnic.hsel(nic_hindex) := '1';
 				tnic.htrans := "10";
 				tnic.hsize := "010";
-				if(state = 0) then
-					tnic.hwrite := '0';
-					tnic.haddr := basei;
-					--noc_rx(7) := '0';
-					tnic.hwdata(31 downto 0) := x"00000000"; -- reset rx buffer in 2nd round				
-					state := 1;
-				elsif(state = 1) then
-					tnic.hwrite := '0';
-					tnic.haddr := basei + x"00000004"; -- vio_header
-					noc_rx := rnic.hrdata(31 downto 0);
-					state := 2;
-				elsif(state = 2) then
-					tnic.hwrite := '0';
-					tnic.haddr := basei + x"00000008"; -- ahb_header
-					ahb_flit.vio_header := rnic.hrdata(31 downto 0); -- vio_header
-					state := 3;
-				elsif(state = 3) then
-					tnic.hwrite := '0';
-					tnic.haddr := basei + x"0000000c"; -- ahb_haddr
-					ahb_flit.ahb_header := rnic.hrdata(31 downto 0); -- ahb_header
-					state := 4;
-				elsif(state = 4) then
-					tnic.hwrite := '0';
-					tnic.haddr := basei  + x"00000010"; -- ahb_hdata
-					ahb_flit.ahb_haddr := rnic.hrdata(31 downto 0); -- ahb_haddr
-					state := 5;
-				elsif(state = 5) then
-					tnic.hwrite := '1';
-					tnic.haddr := basei; -- reset rx buffer
-					ahb_flit.ahb_hdata := rnic.hrdata(31 downto 0); -- ahb_hdata
-					ahb_rx_flit <= ahb_flit;
-					state := 0; -- start in next Buffer
+				if(state = 0 or state = 7) then
 					-- set next RX Buffer
 					if(basei = x"60000030") then basei := x"60000050";
 					elsif(basei = x"60000050") then basei := x"60000070";
-					elsif(basei = x"60000070") then basei := x"60000030";
+					elsif(basei = x"60000070") then basei := x"60000030"; -- first case after reset
 					end if;
+					tnic.hwrite := '0';
+					tnic.haddr := basei; -- start address for new rx buffer sequence
+					if(state = 7) then
+						noc_reg.flit(flit_index) := rnic.hrdata(31 downto 0); -- !!!!!!
+						noc_rx <= noc_reg;
+						noc_rx_ready <= '1';
+						----
+					end if;
+					tnic.hwdata(31 downto 0) := x"00000000"; -- reset rx buffer from previous sequence if there was one			
+					state := 1;
+					flit_index := 0;
+				elsif(state = 1) then
+					tnic.hwrite := '0';
+					tnic.haddr := basei + x"00000004"; -- Request 1st Flit
+					state := 2;
+				elsif(state = 2) then
+					tnic.hwrite := '0';
+					tnic.haddr := basei + x"00000008"; -- Request 2nd Flit
+					noc_reg.state := rnic.hrdata(31 downto 0); -- Receive NoC RX State; Determine Flit amount!
+					state := 3;
+				elsif(state = 3) then
+					tnic.hwrite := '0';
+					tnic.haddr := basei + x"0000000c"; -- Request 3rd Flit
+					noc_reg.flit(flit_index) := rnic.hrdata(31 downto 0);
+					flit_index := flit_index + 1;
+					state := 4;
+				elsif(state = 4) then
+					tnic.hwrite := '0';
+					tnic.haddr := basei + x"00000010"; -- Request 4th Flit
+					noc_reg.flit(flit_index) := rnic.hrdata(31 downto 0); -- ahb_header
+					flit_index := flit_index + 1;
+					state := 5;
+				elsif(state = 5) then
+					tnic.hwrite := '1';
+					tnic.haddr := basei + x"00000014"; -- Request 5th Flit
+					noc_reg.flit(flit_index) := rnic.hrdata(31 downto 0);	
+					flit_index := flit_index + 1;
+					state := 6; -- start in next Buffer
+				elsif(state = 6) then
+					tnic.hwrite := '1';
+					tnic.haddr := basei; -- Select NoC RX State Register to Set Acknowledge
+					noc_reg.flit(flit_index) := rnic.hrdata(31 downto 0);
+					flit_index := flit_index + 1;
+					state := 7; -- start in next Buffer
 				end if;
 			elsif(rnic.hresp = "01") then
 			end if;
 		else
 			tnic := ahbs_in_none;
 			state := 0;
+		end if;
+		if(noc_rx_ack = '1') then -- complete noc_rx handshake
+			noc_rx_ready <= '0';
 		end if;
 	nici <= tnic;
 	end if;	
