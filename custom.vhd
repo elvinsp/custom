@@ -32,6 +32,8 @@ package custom is
 -- procedure <procedure_name> (<type_declaration> <constant_name>	: in <type_declaration>);
 --
 
+type transfer_reg is array (0 to 5) of std_logic_vector(31 downto 0);
+
 type noc_flit_ahb is record
 	vio_header : std_logic_vector(31 downto 0); -- Virtual Controller Infos
 	ahb_header : std_logic_vector(31 downto 0); -- AHB Control Signals
@@ -49,6 +51,23 @@ end record;
 
 constant noc_io_config_none : noc_io_config := ((others => '0'), (others => '0'), (others => '0'));
 
+component nocside
+	 generic (
+				hindex	: integer := 0;
+				dbg		: std_logic := '0');
+    Port ( 	res : in  STD_LOGIC;
+				clk : in  STD_LOGIC;
+				irq : out STD_LOGIC;
+				ofull : out STD_LOGIC;
+				ovalid : out STD_LOGIC;
+				ifull : in STD_LOGIC;
+				ivalid : in STD_LOGIC;
+				itransfer : in transfer_reg;
+				otransfer : out transfer_reg;
+				slvi  : in   ahb_slv_in_type;
+				slvo  : out  ahb_slv_out_type);
+end component;
+
 component top_noc
 	 generic (
     leon_hindex : integer := 0;
@@ -61,7 +80,7 @@ component top_noc
     rst     : in  std_logic;
     clk     : in  std_logic;
 	 le_irq	: out std_logic;
-	 --io_irq	: out std_logic;
+	 io_irq	: out std_logic;
     le_slvi  : in   ahb_slv_in_type;
     le_slvo  : out  ahb_slv_out_type;
 	 io_slvi    : in   ahb_slv_in_type;
@@ -73,12 +92,12 @@ component vnic
     port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;
 			  nic_irq : in std_logic;
+			  nici : out ahb_slv_in_type;
+			  nico : in ahb_slv_out_type;
 			  --msti : in  ahb_mst_in_type;
 			  --msto : out ahb_mst_out_type;
 			  slvi : in ahb_slv_in_type;
-			  slvo : out ahb_slv_out_type;
-			  nici : out ahb_slv_in_type;
-			  nico : in ahb_slv_out_type);
+			  slvo : out ahb_slv_out_type);
 end component;
 
 function a2i(haddr : std_logic_vector(7 downto 0))

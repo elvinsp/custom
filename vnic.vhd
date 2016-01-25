@@ -41,12 +41,12 @@ entity vnic is
     port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;
 			  nic_irq : in std_logic;
+			  nico : in ahb_slv_out_type;
+			  nici : out ahb_slv_in_type;
 			  --msti : in  ahb_mst_in_type;
 			  --msto : out ahb_mst_out_type;
 			  slvi : in ahb_slv_in_type;
-			  slvo : out ahb_slv_out_type;
-			  nico : in ahb_slv_out_type;
-			  nici : out ahb_slv_in_type);
+			  slvo : out ahb_slv_out_type);
 end vnic;
 
 architecture Behavioral of vnic is
@@ -132,7 +132,7 @@ begin
 					flit_index := flit_index + 1;
 					state := 5;
 				elsif(state = 5) then
-					tnic.hwrite := '1';
+					tnic.hwrite := '0';
 					tnic.haddr := basei + x"00000014"; -- Request 5th Flit
 					noc_reg.flit(flit_index) := rnic.hrdata(31 downto 0);	
 					flit_index := flit_index + 1;

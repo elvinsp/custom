@@ -47,26 +47,31 @@ entity nocside is
 				ovalid : out STD_LOGIC;
 				ifull : in STD_LOGIC;
 				ivalid : in STD_LOGIC;
+				itransfer : in transfer_reg;
+				otransfer : out transfer_reg;
 				slvi  : in   ahb_slv_in_type;
 				slvo  : out  ahb_slv_out_type);
 end nocside;
 
 architecture Behavioral of nocside is
 
-type noc_reg is array (0 to 26) of std_logic_vector(31 downto 0); 
-type transfer_reg is array (0 to 4) of std_logic_vector(31 downto 0); 
-signal le_reg : noc_reg; -- writen by io_ni, read by leon_ni
-signal io_reg : noc_reg; -- writen by leon_ni, read by io_ni
-signal io_transfer, le_transfer : std_logic_vector(31 downto 0);
+type noc_reg is array (0 to 26) of std_logic_vector(31 downto 0);  
+signal datastore : noc_reg; -- writen by io_ni, read by leon_ni
+constant hconfig : ahb_config_type := (
+  0 => ahb_device_reg ( 16#01#, 16#020#, 0, 0, 0), --ahb_device_reg (VENDOR_EXAMPLE, EXAMPLE_AHBRAM, 0, 0, 0)
+  4 => ahb_membar(16#400#, '0', '0', 16#fff#), -- ahb_membar(memaddr, '0', '0', memmask), others => X"00000000");
+  others => zero32);
+--signal io_transfer, le_transfer : std_logic_vector(31 downto 0);
 --signal v : ahb_slv_in_type;
 
 begin
 
-leon_ni: process(clk, rst)
---variable le_reg_buffer : std_logic_vector(31 downto 0);
+x_noc: process(clk, res)
+--variable datastore_buffer : std_logic_vector(31 downto 0);
 variable queue : integer := 0;
 variable index : integer := 27;
 variable tindex : integer := 27;
+variable len : integer := 0;
 variable basei : std_logic_vector(7 downto 0);
 variable state : integer range 0 to 1;
 variable t : ahb_slv_out_type;
@@ -78,7 +83,8 @@ begin
 		irq <= '0';
 		ofull <= '0';
 		ovalid <= '0';
-		le_reg <= (others => (others => '0'));
+		datastore <= (others => (others => '0'));
+		otransfer <= (others => (others => '0'));
 		slvo <= ahbs_none;
 		basei := x"30";
 	elsif(clk'event and clk = '1') then
@@ -89,7 +95,7 @@ begin
 				if(r.htrans(1) = '1') then
 					---- Write hwdata ----------------------------------------
 					if(tindex >= 0 and tindex < 27) then
-						le_reg(tindex) <= r.hwdata(31 downto 0);
+						datastore(tindex) <= r.hwdata(31 downto 0);
 						queue := 1;
 						if(dbg='1') then print("leW01s "&tost(r.hwdata(31 downto 0))&" @ "&ptime); end if;
 					else
@@ -113,10 +119,10 @@ begin
 							else
 								-- Basic read transfer according to AMBA Spec (Rev 2.0)
 								t.hready := '1';
-								t.hrdata(31 downto 0) := le_reg(index);
+								t.hrdata(31 downto 0) := datastore(index);
 								t.hresp := "00";
 								tindex := 27; -- deleting index so no illegal write is initiated in write section
-								if(dbg='1') then print("leR00s "&tost(le_reg(index))&" from "&tost(r.haddr(31 downto 0))&" @ "&ptime); end if;
+								if(dbg='1') then print("leR00s "&tost(datastore(index))&" from "&tost(r.haddr(31 downto 0))&" @ "&ptime); end if;
 							end if;
 						else
 							-- preparing write transfer in next cycle according to AMBA Spec (Rev 2.0)
@@ -148,12 +154,12 @@ begin
 			t := ahbs_none;
 			if(state = 1) then -- execute last cmd after hsel low
 				if(tindex >= 0 and tindex < 27) then -- tindex only in range if last cmd was write else read
-					le_reg(tindex) <= r.hwdata(31 downto 0);
+					datastore(tindex) <= r.hwdata(31 downto 0);
 					t.hresp := "00";
 					t.hready := '1';
 					if(dbg='1') then print("leW01s "&tost(r.hwdata(31 downto 0))&" @ "&ptime); end if;
 				else 
-					t.hrdata(31 downto 0) := le_reg(index);
+					t.hrdata(31 downto 0) := datastore(index);
 					t.hresp := "00";
 					t.hready := '1';
 				end if;
@@ -165,38 +171,45 @@ begin
 		--------------------------------------------------------------------------------------------------------
 		-- Write to IO
 		if(ifull = '0') then
-			le_reg(a2i(x"10"))(7) <= '0'; -- IO Side ready
-			if(le_reg(a2i(x"10"))(6) = '1') then
+			datastore(a2i(x"10"))(7) <= '0'; -- IO Side ready
+			if(datastore(a2i(x"10"))(6) = '1') then
 				ovalid <= '1'; -- transfer data valid for IO Side
-				le_transfer(0) <= le_reg(a2i(x"14"));
-				le_transfer(1) <= le_reg(a2i(x"18"));
-				le_transfer(2) <= le_reg(a2i(x"1c"));
-				le_transfer(3) <= le_reg(a2i(x"20"));
-				le_transfer(4) <= le_reg(a2i(x"24"));
-				le_reg(a2i(x"10"))(6) <= '0';
+				otransfer(0)(18 downto 16) <= datastore(a2i(x"10"))(18 downto 16);
+				otransfer(1) <= datastore(a2i(x"14"));
+				otransfer(2) <= datastore(a2i(x"18"));
+				otransfer(3) <= datastore(a2i(x"1c"));
+				otransfer(4) <= datastore(a2i(x"20"));
+				otransfer(5) <= datastore(a2i(x"24"));
+				datastore(a2i(x"10"))(6) <= '0';
 			else
 				ovalid <= '0'; -- transfer data invalid for IO Side
 			end if;
 		else
-			le_reg(a2i(x"10"))(7) <= '1';
+			datastore(a2i(x"10"))(7) <= '1';
 		end if;
 		-- Read from IO
 		if(ivalid = '1') then
 			-- Read Flit to LEON RX Buffer
-			if(le_reg(a2i(basei))(7) = '0') then
-				--if(conv_integer(io_reg(a2i(basei))(7)) >= 1)
-				le_reg(a2i(basei+x"04")) <= io_transfer(0);
-				le_reg(a2i(basei+x"08")) <= io_transfer(1);
-				le_reg(a2i(basei+x"0c")) <= io_transfer(2);
-				le_reg(a2i(basei+x"10")) <= io_transfer(3);
-				le_reg(a2i(basei+x"14")) <= io_transfer(4);
-				le_reg(a2i(basei))(7) <= '1';
+			if(datastore(a2i(basei))(7) = '0') then
+				datastore(a2i(basei)) 	<= itransfer(0);
+				len := conv_integer(itransfer(0)(18 downto 16));
+				if(len >= 1) then datastore(a2i(basei+x"04")) <= itransfer(1);
+				end if;
+				if(len >= 2) then datastore(a2i(basei+x"08")) <= itransfer(2);
+				end if;
+				if(len >= 3) then datastore(a2i(basei+x"0c")) <= itransfer(3);
+				end if;
+				if(len >= 4) then datastore(a2i(basei+x"10")) <= itransfer(4);
+				end if;
+				if(len >= 5) then datastore(a2i(basei+x"14")) <= itransfer(5);
+				end if;
+				datastore(a2i(basei))(7) <= '1';
 				ofull <= '0'; -- not full
 			else
 				ofull <= '1'; -- full
 			end if;
 			-- LEON RX Buffer full?
-			--if(le_reg(a2i(x"30"))(7) = '1' and le_reg(a2i(x"50"))(7) = '1' and le_reg(a2i(x"70"))(7) = '1') then
+			--if(datastore(a2i(x"30"))(7) = '1' and datastore(a2i(x"50"))(7) = '1' and datastore(a2i(x"70"))(7) = '1') then
 			--	ofull <= '1';
 			--else
 			--	ofull <= '0';
@@ -208,7 +221,7 @@ begin
 			end if;
 		end if;
 		-- LEON RX Buffer empty?
-		if(le_reg(a2i(x"30"))(7) = '1' or le_reg(a2i(x"50"))(7) = '1' or le_reg(a2i(x"70"))(7) = '1') then
+		if(datastore(a2i(x"30"))(7) = '1' or datastore(a2i(x"50"))(7) = '1' or datastore(a2i(x"70"))(7) = '1') then
 			irq <= '1';
 		else
 			irq <= '0';
@@ -216,12 +229,12 @@ begin
 	end if;
 	
 	-- LEON Side AHB Slave
-	--slvo.hconfig <= hconfig_leon;
+	slvo.hconfig <= hconfig;
   	slvo.hindex  <= hindex;
   	slvo.hsplit   <= (others => '0'); 
   	slvo.hirq    <= (others => '0');
 	
-end process leon_ni;
+end process x_noc;
 
 end Behavioral;
 

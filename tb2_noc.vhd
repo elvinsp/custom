@@ -50,11 +50,11 @@ ARCHITECTURE noc_simple_transfer OF tb2_noc IS
    --Inputs
    signal rstn : std_logic := '0';
    signal clkm : std_logic := '0';
-	signal nic_irq : std_logic := '0';
+	signal le_irq, io_irq : std_logic := '0';
 	signal apbi  : apb_slv_in_type;
 	signal apbo  : apb_slv_out_vector := (others => apb_none);
-	signal vn_ahbsi : ahb_slv_in_type;
-	signal vn_ahbso : ahb_slv_out_type;
+	signal iovn_ahbsi : ahb_slv_in_type;
+	signal iovn_ahbso : ahb_slv_out_type;
    signal le_ahbsi, io_ahbsi : ahb_slv_in_type;
    signal le_ahbso, io_ahbso : ahb_slv_out_vector := (others => ahbs_none);
    signal le_ahbmi, io_ahbmi : ahb_mst_in_type;
@@ -78,11 +78,11 @@ BEGIN
 	 io_hindex => 0,
 	 io_haddr => 16#400#,
     hmask => 16#fff#)
-    port map (rstn, clkm, nic_irq, vn_ahbsi, vn_ahbso, le_ahbsi, le_ahbso(0));
+    port map (rstn, clkm, le_irq, io_irq, le_ahbsi, le_ahbso(0), iovn_ahbsi, iovn_ahbso);
 	 
 	vnic0 : vnic
 	generic map(nic_hindex => 0)
-	port map(rstn, clkm, nic_irq, io_ahbsi, io_ahbso(0), vn_ahbsi, vn_ahbso);
+	port map(rstn, clkm, io_irq, iovn_ahbsi, iovn_ahbso, io_ahbsi, io_ahbso(0));
 		  
 	leon_ahb0 : ahbctrl       -- AHB arbiter/multiplexer
 				generic map (defmast => 0, split => 0, 
@@ -145,21 +145,22 @@ BEGIN
       wait for 200 ns;	
 		ahbwrite(x"40000014", x"11111111", "10", 2, false , le_ctrl);
 		wait until clkm'event and clkm='1';
-		ahbwrite(x"40000010", x"10000040", "10", 2, false , le_ctrl);
+		ahbwrite(x"40000010", x"10050040", "10", 2, false , le_ctrl);
 		wait until clkm'event and clkm='1';
 		ahbtbmidle(false, le_ctrl);
+		wait for 200 ns;
 		wait until clkm'event and clkm='1';
 		wait until clkm'event and clkm='1';
 		ahbwrite(x"40000018", x"44444444", "10", 2, false , le_ctrl);
 		wait until clkm'event and clkm='1';
-		ahbwrite(x"40000010", x"10000040", "10", 2, false , le_ctrl);
+		ahbwrite(x"40000010", x"10050040", "10", 2, false , le_ctrl);
 		wait until clkm'event and clkm='1';
 		ahbtbmidle(false, le_ctrl);
 		wait until clkm'event and clkm='1';
 		wait until clkm'event and clkm='1';
 		ahbwrite(x"4000001c", x"88888888", "10", 2, false , le_ctrl);
 		wait until clkm'event and clkm='1';
-		ahbwrite(x"40000010", x"10000040", "10", 2, false , le_ctrl);
+		ahbwrite(x"40000010", x"10050040", "10", 2, false , le_ctrl);
 		wait until clkm'event and clkm='1';
 		ahbtbmidle(false, le_ctrl);
 		wait until clkm'event and clkm='1';
