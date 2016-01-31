@@ -56,7 +56,6 @@ end nocside;
 architecture Behavioral of nocside is
 
 type noc_reg is array (0 to 26) of std_logic_vector(31 downto 0);  
-signal datastore : noc_reg; -- writen by io_ni, read by leon_ni
 constant hconfig : ahb_config_type := (
   0 => ahb_device_reg ( 16#01#, 16#020#, 0, 0, 0), --ahb_device_reg (VENDOR_EXAMPLE, EXAMPLE_AHBRAM, 0, 0, 0)
   4 => ahb_membar(16#400#, '0', '0', 16#fff#), -- ahb_membar(memaddr, '0', '0', memmask), others => X"00000000");
@@ -67,7 +66,7 @@ constant hconfig : ahb_config_type := (
 begin
 
 x_noc: process(clk, res)
---variable datastore_buffer : std_logic_vector(31 downto 0);
+variable datastore : noc_reg; -- writen by io_ni, read by leon_ni
 variable queue : integer := 0;
 variable index : integer := 27;
 variable tindex : integer := 27;
@@ -83,7 +82,7 @@ begin
 		irq <= '0';
 		ofull <= '0';
 		ovalid <= '0';
-		datastore <= (others => (others => '0'));
+		datastore := (others => (others => '0'));
 		otransfer <= (others => (others => '0'));
 		slvo <= ahbs_none;
 		basei := x"30";
@@ -95,7 +94,7 @@ begin
 				if(r.htrans(1) = '1') then
 					---- Write hwdata ----------------------------------------
 					if(tindex >= 0 and tindex < 27) then
-						datastore(tindex) <= r.hwdata(31 downto 0);
+						datastore(tindex) := r.hwdata(31 downto 0);
 						queue := 1;
 						if(dbg='1') then print("leW01s "&tost(r.hwdata(31 downto 0))&" @ "&ptime); end if;
 					else
@@ -110,7 +109,7 @@ begin
 						if(r.hwrite = '0') then
 							if(queue = 1 and tindex = index) then
 								-- immediate readout after write; wait for legit data; not within AMBA Spec
-								-- t.hresp <= "10";
+								-- t.hresp := "10";
 								t.hresp := "10";
 								t.hready := '0';
 								queue := 0;   -- don't come here again unless there was a write transfer
@@ -154,7 +153,7 @@ begin
 			t := ahbs_none;
 			if(state = 1) then -- execute last cmd after hsel low
 				if(tindex >= 0 and tindex < 27) then -- tindex only in range if last cmd was write else read
-					datastore(tindex) <= r.hwdata(31 downto 0);
+					datastore(tindex) := r.hwdata(31 downto 0);
 					t.hresp := "00";
 					t.hready := '1';
 					if(dbg='1') then print("leW01s "&tost(r.hwdata(31 downto 0))&" @ "&ptime); end if;
@@ -171,7 +170,7 @@ begin
 		--------------------------------------------------------------------------------------------------------
 		-- Write to IO
 		if(ifull = '0') then
-			datastore(a2i(x"10"))(7) <= '0'; -- IO Side ready
+			datastore(a2i(x"10"))(7) := '0'; -- IO Side ready
 			if(datastore(a2i(x"10"))(6) = '1') then
 				ovalid <= '1'; -- transfer data valid for IO Side
 				otransfer(0)(18 downto 16) <= datastore(a2i(x"10"))(18 downto 16);
@@ -180,30 +179,35 @@ begin
 				otransfer(3) <= datastore(a2i(x"1c"));
 				otransfer(4) <= datastore(a2i(x"20"));
 				otransfer(5) <= datastore(a2i(x"24"));
-				datastore(a2i(x"10"))(6) <= '0';
+				datastore(a2i(x"10"))(6) := '0';
+				datastore(a2i(x"14")) := (others => '0');
+				datastore(a2i(x"18")) := (others => '0');
+				datastore(a2i(x"1c")) := (others => '0');
+				datastore(a2i(x"20")) := (others => '0');
+				datastore(a2i(x"24")) := (others => '0');
 			else
 				ovalid <= '0'; -- transfer data invalid for IO Side
 			end if;
 		else
-			datastore(a2i(x"10"))(7) <= '1';
+			datastore(a2i(x"10"))(7) := '1';
 		end if;
 		-- Read from IO
 		if(ivalid = '1') then
 			-- Read Flit to LEON RX Buffer
 			if(datastore(a2i(basei))(7) = '0') then
-				datastore(a2i(basei)) 	<= itransfer(0);
+				datastore(a2i(basei)) 	:= itransfer(0);
 				len := conv_integer(itransfer(0)(18 downto 16));
-				if(len >= 1) then datastore(a2i(basei+x"04")) <= itransfer(1);
+				if(len >= 1) then datastore(a2i(basei+x"04")) := itransfer(1);
 				end if;
-				if(len >= 2) then datastore(a2i(basei+x"08")) <= itransfer(2);
+				if(len >= 2) then datastore(a2i(basei+x"08")) := itransfer(2);
 				end if;
-				if(len >= 3) then datastore(a2i(basei+x"0c")) <= itransfer(3);
+				if(len >= 3) then datastore(a2i(basei+x"0c")) := itransfer(3);
 				end if;
-				if(len >= 4) then datastore(a2i(basei+x"10")) <= itransfer(4);
+				if(len >= 4) then datastore(a2i(basei+x"10")) := itransfer(4);
 				end if;
-				if(len >= 5) then datastore(a2i(basei+x"14")) <= itransfer(5);
+				if(len >= 5) then datastore(a2i(basei+x"14")) := itransfer(5);
 				end if;
-				datastore(a2i(basei))(7) <= '1';
+				datastore(a2i(basei))(7) := '1';
 				ofull <= '0'; -- not full
 			else
 				ofull <= '1'; -- full
