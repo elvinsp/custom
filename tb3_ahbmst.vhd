@@ -29,7 +29,7 @@ LIBRARY ieee;
 USE ieee.std_logic_1164.ALL;
 library gaisler;
 use gaisler.ahbtbp.all;
-use gaisler.custom.all;
+use work.custom.all;
 library grlib;
 use grlib.amba.all;
 use grlib.testlib.all;
@@ -46,14 +46,17 @@ ARCHITECTURE test_ahbmst OF tb3_ahbmst IS
  
     -- Component Declaration for the Unit Under Test (UUT)
     
-
+	constant dmai_none : ahb_dma_in_type := ((others => '0'), (others => '0'), '0', '0', '0', '0', '0', (others => '0'));
    --Inputs
    signal rstn : std_logic := '0';
    signal clkm : std_logic := '0';
+	signal le_irq, io_irq : std_logic := '0';
    signal ahbsi : ahb_slv_in_type;
    signal ahbso : ahb_slv_out_vector := (others => ahbs_none);
    signal ahbmi : ahb_mst_in_type;
    signal ahbmo : ahb_mst_out_vector := (others => ahbm_none);
+	signal iovn_ahbsi : ahb_slv_in_type;
+	signal iovn_ahbso : ahb_slv_out_type;
 	signal dmai : ahb_dma_in_type := dmai_none;
    signal dmao : ahb_dma_out_type;
 	signal ctrl  : ahbtb_ctrl_type;
@@ -68,10 +71,12 @@ BEGIN
 	-- Instantiate the Unit Under Test (UUT)
    uut: top_noc
 	generic map (
-    hindex => 0,
-    haddr => 16#400#,
+    leon_hindex => 0,
+    leon_haddr => 16#400#,
+	 io_hindex => 0,
+	 io_haddr => 16#400#,
     hmask => 16#fff#)
-    port map (rstn, clkm, ahbsi, ahbso(0));
+    port map (rstn, clkm, le_irq, io_irq, ahbsi, ahbso(0), iovn_ahbsi, iovn_ahbso);
 		  
 	ahb0 : ahbctrl       -- AHB arbiter/multiplexer
 				generic map (defmast => 0, split => 0, 
@@ -120,7 +125,7 @@ BEGIN
 		wait until clkm'event and clkm='1';
 		-----------------------------------------------
 		dmai.address <= x"40000014";
-		dmai.wdata(31 downto 0) <= x"f1234000";
+		dmai.wdata(31 downto 0) <= x"eeeeeeee";
 		dmai.burst <= '0';
 		dmai.write <= '1';
 		dmai.busy <= '0';
@@ -132,25 +137,25 @@ BEGIN
 		dmai.wdata(31 downto 0) <= x"aaaa0000";
 		--wait until clkm'event and clkm='1';
 		------------------------------------------------
-		dmai.address <= x"40000014";
-		--dmai.wdata(31 downto 0) <= x"fffff000";
+		dmai.address <= x"40000018";
+		dmai.wdata(31 downto 0) <= x"ffffffff";
 		dmai.burst <= '0';
-		dmai.write <= '0';
+		dmai.write <= '1';
 		dmai.busy <= '0';
 		dmai.irq <= '0';
 		dmai.size <= "010";
 		wait until clkm'event and clkm='1';
 		dmai.start <= '0';
-		dmai.wdata(31 downto 0) <= x"fffff000";
+		dmai.wdata(31 downto 0) <= x"bbbb0000";
 		wait until clkm'event and clkm='1';
 		-------------------------------------------------
-		wait for 200 ns;
+		--wait for 200 ns;
 		ahbread(x"40000014", x"f1234000", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
 		ahbread(x"40000018", x"fffff000", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
 		ahbtbmidle(false, ctrl);
-		wait for 200 ns;
+		--wait for 200 ns;
 		-------------------------------------------------
 		dmai.address <= x"40000014";
 		dmai.wdata(31 downto 0) <= x"aaaaaaaa";

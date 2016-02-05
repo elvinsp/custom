@@ -59,7 +59,9 @@ ARCHITECTURE noc_simple_transfer OF tb2_noc IS
    signal le_ahbso, io_ahbso : ahb_slv_out_vector := (others => ahbs_none);
    signal le_ahbmi, io_ahbmi : ahb_mst_in_type;
    signal le_ahbmo, io_ahbmo : ahb_mst_out_vector := (others => ahbm_none);
-	signal le_ctrl, io_ctrl  : ahbtb_ctrl_type;
+	signal le1_ctrl, io_ctrl  : ahbtb_ctrl_type;
+	signal mst_tx, mst_rx : noc_transfer_reg;
+	signal mst_tx_ready, mst_rx_ready, mst_tx_ack, mst_rx_ack : std_logic;
 	--signal le_ctrli : ahbtbm_le_ctrl_in_type;
 	--signal le_ctrlo : ahbtbm_le_ctrl_out_type;
 	signal u1i, dui : uart_in_type;
@@ -87,17 +89,20 @@ BEGIN
 	leon_ahb0 : ahbctrl       -- AHB arbiter/multiplexer
 				generic map (defmast => 0, split => 0, 
 									rrobin => 1, ioaddr => 16#800#,
-									ioen => 1, nahbm => 1, nahbs => 16)
+									ioen => 1, nahbm => 2, nahbs => 16)
 				port map (rstn, clkm, le_ahbmi, le_ahbmo, le_ahbsi, le_ahbso);	 
 	io_ahb0 : ahbctrl       -- AHB arbiter/multiplexer
 				generic map (defmast => 1, split => 0, 
 									rrobin => 1, ioaddr => 16#800#,
-									ioen => 1, nahbm => 1, nahbs => 16)
+									ioen => 1, nahbm => 2, nahbs => 16)
 				port map (rstn, clkm, io_ahbmi, io_ahbmo, io_ahbsi, io_ahbso);	 
 
-	leon_ahbtbm0 : ahbtbm
+	leon1_ahbtbm0 : ahbtbm
 		generic map(hindex => 0) -- AMBA master index 0
-		port map(rstn, clkm, le_ctrl.i, le_ctrl.o, le_ahbmi, le_ahbmo(0));
+		port map(rstn, clkm, le1_ctrl.i, le1_ctrl.o, le_ahbmi, le_ahbmo(0));
+	leon2_ahbtbm0 : vcmst
+		generic map(hindex => 1) -- AMBA master index 0
+		port map(rstn, clkm, mst_tx_ready, mst_tx_ack, mst_tx, mst_rx_ready, mst_rx_ack, mst_rx, le_ahbmi, le_ahbmo(1));
 	io_ahbtbm0 : ahbtbm
 		generic map(hindex => 1) -- AMBA master index 0
 		port map(rstn, clkm, io_ctrl.i, io_ctrl.o, io_ahbmi, io_ahbmo(1));
@@ -126,7 +131,7 @@ BEGIN
  
    -- Stimulus process
    stim_proc: process
-   begin	
+   begin		
 		rstn <= '0';
 		wait for 100 ns;
 		rstn <= '1';
@@ -135,53 +140,77 @@ BEGIN
 		wait;
 	end process;
 	
-	leon_proc: process
+	leon1_proc: process
 	begin
 		wait for 40 ns;
 		-- Initialize the control signals
-		ahbtbminit(le_ctrl);
+		ahbtbminit(le1_ctrl);
 		wait until clkm'event and clkm='1';
-		ahbtbmidle(false, le_ctrl);
+		ahbtbmidle(false, le1_ctrl);
       wait for 200 ns;	
-		ahbwrite(x"40000014", x"11111111", "10", 2, false , le_ctrl);
+		ahbwrite(x"40000014", x"11111111", "10", 2, false , le1_ctrl);
 		wait until clkm'event and clkm='1';
-		ahbwrite(x"40000010", x"10050040", "10", 2, false , le_ctrl);
+		ahbwrite(x"40000010", x"10050040", "10", 2, false , le1_ctrl);
 		wait until clkm'event and clkm='1';
-		ahbtbmidle(false, le_ctrl);
+		ahbtbmidle(false, le1_ctrl);
 		wait for 200 ns;
 		wait until clkm'event and clkm='1';
 		wait until clkm'event and clkm='1';
-		ahbwrite(x"40000018", x"44444444", "10", 2, false , le_ctrl);
+		ahbwrite(x"40000018", x"44444444", "10", 2, false , le1_ctrl);
 		wait until clkm'event and clkm='1';
-		ahbwrite(x"40000010", x"10050040", "10", 2, false , le_ctrl);
-		wait until clkm'event and clkm='1';
-		ahbtbmidle(false, le_ctrl);
-		wait until clkm'event and clkm='1';
-		wait until clkm'event and clkm='1';
-		ahbwrite(x"4000001c", x"88888888", "10", 2, false , le_ctrl);
-		wait until clkm'event and clkm='1';
-		ahbwrite(x"40000010", x"10050040", "10", 2, false , le_ctrl);
-		wait until clkm'event and clkm='1';
-		ahbtbmidle(false, le_ctrl);
-		wait until clkm'event and clkm='1';
-		wait until clkm'event and clkm='1';
-		ahbwrite(x"40000014", x"22222222", "10", 2, false , le_ctrl);
-		wait until clkm'event and clkm='1';
-		ahbwrite(x"40000010", x"10000040", "10", 2, false , le_ctrl);
-		wait until clkm'event and clkm='1';
-		ahbtbmidle(false, le_ctrl);
+--		ahbwrite(x"40000010", x"10050040", "10", 2, false , le1_ctrl);
+--		wait until clkm'event and clkm='1';
+--		ahbtbmidle(false, le1_ctrl);
+--		--wait until clkm'event and clkm='1';
+--		--wait until clkm'event and clkm='1';
+--		ahbwrite(x"4000001c", x"88888888", "10", 2, false , le1_ctrl);
+--		wait until clkm'event and clkm='1';
+--		ahbwrite(x"40000010", x"10050040", "10", 2, false , le1_ctrl);
+--		wait until clkm'event and clkm='1';
+--		ahbtbmidle(false, le1_ctrl);
+--		wait until clkm'event and clkm='1';
+--		--wait until clkm'event and clkm='1';
+--		ahbwrite(x"40000014", x"22222222", "10", 2, false , le1_ctrl);
+--		wait until clkm'event and clkm='1';
+--		ahbwrite(x"40000010", x"10000040", "10", 2, false , le1_ctrl);
+--		wait until clkm'event and clkm='1';
+		ahbtbmidle(false, le1_ctrl);
 		wait for 100 ns;
 		wait for 100 ns;
 		-- Stop simulation
-		ahbtbmdone(0, le_ctrl); 
+		ahbtbmdone(0, le1_ctrl);
       wait;
    end process;
+	
+	leon2_proc: process
+	begin
+		mst_tx_ready <= '0';
+		mst_rx_ack <= '0';
+		mst_tx <= noc_transfer_none;
+		
+		wait for 800 ns;
+		mst_tx.flit(0)(16) <= '1'; -- hwrite
+		mst_tx.flit(0)(18 downto 17) <= "10";  -- htrans
+		mst_tx.flit(0)(21 downto 19) <= "010"; -- hsize
+		mst_tx.flit(0)(24 downto 22) <= "000"; -- hburst
+		mst_tx.flit(0)(28 downto 25) <= "0000"; -- hprot
+		mst_tx.flit(1) <= x"40000010";
+		mst_tx.flit(2) <= x"10030040";
+		wait until clkm'event and clkm='1';
+		mst_tx_ready <= '1';
+		wait until mst_tx_ack = '1';
+		wait until clkm'event and clkm='1';
+		mst_tx_ready <= '0';		
+			
+		wait;
+	end process;
 	
 	io_proc: process
 	begin
 		wait for 40 ns;
 		-- Initialize the control signals
       ahbtbminit(io_ctrl);
+		ahbtbmidle(false, io_ctrl);
       wait for 300 ns;	
 		ahbwrite(x"60000014", x"11111111", "10", 2, false , io_ctrl);
 		wait until clkm'event and clkm='1';

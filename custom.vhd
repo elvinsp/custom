@@ -32,7 +32,15 @@ package custom is
 -- procedure <procedure_name> (<type_declaration> <constant_name>	: in <type_declaration>);
 --
 
+-- typedef
 type transfer_reg is array (0 to 5) of std_logic_vector(31 downto 0);
+
+type flits is array (0 to 4) of std_logic_vector(31 downto 0);
+
+type noc_transfer_reg is record
+	state : std_logic_vector(31 downto 0);
+	flit :  flits;
+end record;
 
 type noc_flit_ahb is record
 	vio_header : std_logic_vector(31 downto 0); -- Virtual Controller Infos
@@ -41,15 +49,31 @@ type noc_flit_ahb is record
 	ahb_hdata : std_logic_vector(31 downto 0);  -- AHB Data
 end record;
 
-constant noc_flit_ahb_none : noc_flit_ahb := ((others => '0'), (others => '0'), (others => '0'), (others => '0'));
-
 type noc_io_config is record
 	vio_header : std_logic_vector(31 downto 0);
 	io_resource : std_logic_vector(31 downto 0);
 	io_state : std_logic_vector(31 downto 0);
 end record;
 
+-- constants
+constant flit_none : flits := ((others => '0'), (others => '0'), (others => '0'), (others => '0'), (others => '0'));
+constant noc_transfer_none : noc_transfer_reg := ((others => '0'), flit_none);
 constant noc_io_config_none : noc_io_config := ((others => '0'), (others => '0'), (others => '0'));
+constant noc_flit_ahb_none : noc_flit_ahb := ((others => '0'), (others => '0'), (others => '0'), (others => '0'));
+
+component vcmst
+	 generic( hindex : integer := 0);
+    port ( res : in  STD_LOGIC;
+           clk : in  STD_LOGIC;
+			  requ_ready : in std_logic;
+			  requ_ack : out std_logic;
+			  requ : in noc_transfer_reg;
+			  resp_ready : out std_logic;
+			  resp_ack : in std_logic;
+			  resp : out noc_transfer_reg;
+			  ahbmi : in ahb_mst_in_type;
+			  ahbmo : out ahb_mst_out_type);
+end component;
 
 component nocside
 	 generic (

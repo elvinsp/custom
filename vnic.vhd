@@ -37,7 +37,8 @@ use work.custom.all;
 --use UNISIM.VComponents.all;
 
 entity vnic is
-	 generic (nic_hindex : integer := 0);
+	 generic(nic_hindex : integer := 0;
+				ahb_hindex : integer := 0);
     port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;
 			  nic_irq : in std_logic;
@@ -50,17 +51,6 @@ entity vnic is
 end vnic;
 
 architecture Behavioral of vnic is
-
--- typedefs
-type flits is array (0 to 4) of std_logic_vector(31 downto 0);
-type noc_transfer_reg is record
-	state : std_logic_vector(31 downto 0);
-	flit :  flits;
-end record;
-
--- constants
-constant flit_none : flits := ((others => '0'), (others => '0'), (others => '0'), (others => '0'), (others => '0'));
-constant noc_transfer_none : noc_transfer_reg := ((others => '0'), flit_none);
 
 -- signals
 signal noc_rx, noc_tx : noc_transfer_reg; -- data handover register from NI-AHB-Interface to processing
@@ -101,12 +91,6 @@ begin
 		if(cstart = '1') then
 			state := cstate;
 			nic_start <= '1';
-		end if;
-		if(noc_tx_ready = '1') then
-			noc_tx_reg := noc_tx;
-			noc_tx_ack <= '1';
-		else
-			noc_tx_ack <= '0';
 		end if;
 		rnic := nico;
 		if(state = "01") then
@@ -160,8 +144,10 @@ begin
 					flit_index := flit_index + 1;
 					rxstate := 7; -- start in next Buffer
 				elsif(rxstate = 7) then
+					tnic.hwrite := '0';
 					tnic.hsel(nic_hindex) := '0';
 					tnic.haddr := x"00000000";
+					tnic.hwdata(31 downto 0) := x"00000001"; --!!!!!
 					noc_rx_reg.flit(flit_index) := rnic.hrdata(31 downto 0); -- Receive 5th flit
 					noc_rx <= noc_rx_reg;
 					noc_rx_ready <= '1';
@@ -173,6 +159,12 @@ begin
 		--------------------------------------------------------------------------
 		elsif(state = "10") then
 			rxstate := 0;
+			if(noc_tx_ready = '1') then
+				noc_tx_reg := noc_tx;
+				noc_tx_ack <= '1';
+			else
+				noc_tx_ack <= '0';
+			end if;
 			if(rnic.hresp = "00" and rnic.hready = '1') then -- Slave OKAY Response
 				tnic.hsel(nic_hindex) := '1';
 				tnic.htrans := "10";
@@ -224,7 +216,6 @@ begin
 					tnic.hwrite := '1';
 					tnic.haddr := tbase; -- Select TX state register	
 					tnic.hwdata(31 downto 0):= noc_tx_reg.flit(flit_index); -- Write 5th Flit
-					flit_index := flit_index + 1;
 					txstate := 8;
 				elsif(txstate = 8) then
 					tnic.hsel(nic_hindex) := '0';
@@ -257,14 +248,14 @@ begin
 		cstart <= '0';
 		cstate <= "00";
 	elsif(clk'event and clk = '1') then
-		if(nic_start = '1') then
-			start := '0';
+		if(nic_start = '1') then 
+			start := '0'; -- prepare for release of this this process
 		end if;
 		if(rr = 1) then
 			if(nic_start = '0' and start = '0') then
 				if(nic_irq = '1') then
 					cstate <= "01";
-					start := '1';
+					start := '1'; -- lock this process
 				else
 					cstate <= "00";
 				end if;
@@ -274,7 +265,7 @@ begin
 			if(nic_start = '0' and start = '0') then
 				if(noc_tx_ready = '1') then
 					cstate <= "10";
-					start := '1';
+					start := '1'; -- lock this process
 				else
 					cstate <= "00";
 				end if;
@@ -287,14 +278,15 @@ end process vnic_control;
 
 packetizer: process(clk, res)
 begin
-	if(res = '0') then 
+	if(res = '0') then
+		noc_tx <= noc_transfer_none;
 		noc_tx_ready <= '0';
 		noc_rx_ack <= '0';
 	elsif(clk'event and clk = '1') then
 		if(noc_rx_ready = '1') then 
-			noc_tx <= noc_rx;
+			--noc_tx <= noc_rx;
 			noc_rx_ack <= '1';
-			noc_tx_ready <= '1';
+			--noc_tx_ready <= '1';
 		else
 			noc_rx_ack <= '0';
 		end if;
