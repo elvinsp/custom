@@ -117,7 +117,8 @@ begin
 				elsif(rxstate = 2) then
 					tnic.hwrite := '0';
 					tnic.haddr := rbase + x"00000008"; -- Request 2nd Flit
-					noc_rx_reg.state := rnic.hrdata(31 downto 0); -- Receive NoC RX State; Determine Flit amount!
+					noc_rx_reg.len := rnic.hrdata(18 downto 16); -- Receive NoC RX State; Determine amount of Flits
+					noc_rx_reg.addr := rnic.hrdata(11 downto 8); -- Receive NoC RX State; Determine amount of Flits
 					rxstate := 3;
 				elsif(rxstate = 3) then
 					tnic.hwrite := '0';
@@ -180,7 +181,7 @@ begin
 					tnic.haddr := x"00000000";
 					txstate := 2;
 				elsif(txstate = 2) then
-					if(rnic.hrdata(7) = '1') then 
+					if(rnic.hrdata(31) = '1') then 
 						nic_start <= '0';
 						state := "00";
 					else
@@ -219,8 +220,9 @@ begin
 					txstate := 8;
 				elsif(txstate = 8) then
 					tnic.hsel(nic_hindex) := '0';
-					tnic.hwdata(18 downto 16) := noc_tx_reg.state(18 downto 16);
-					tnic.hwdata(6) := '1';
+					tnic.hwdata(18 downto 16) := noc_tx_reg.len;
+					tnic.hwdata(11 downto 8) := noc_tx_reg.addr;
+					tnic.hwdata(30) := '1';
 					nic_start <= '0';
 					state := "00";
 				end if;

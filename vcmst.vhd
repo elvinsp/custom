@@ -51,7 +51,10 @@ entity vcmst is
 end vcmst;
 
 architecture Behavioral of vcmst is
-
+constant hconfig : ahb_config_type := (
+  0 => ahb_device_reg ( 16#01#, 16#020#, 0, 0, 0), --ahb_device_reg (VENDOR_EXAMPLE, EXAMPLE_AHBRAM, 0, 0, 0)
+  4 => ahb_membar(16#400#, '0', '0', 16#fff#), -- ahb_membar(memaddr, '0', '0', memmask), others => X"00000000");
+  others => zero32);
 begin
 vcmst_proc: process(clk, res)
 variable tmst : ahb_mst_out_type;
@@ -79,43 +82,65 @@ begin
 			busy := '1'; -- lock on transaction
 			requ_ack <= '1';
 			state := 1;
+			tmst.hbusreq := '1';
 		end if;
 		if(requ_ready = '0') then requ_ack <= '0';
 		end if;
 		if(resp_ack = '1') then resp_ready <= '1';
 		end if;
-		if(state = 1) then
-			tmst.hbusreq := '1';
-			if(rmst.hgrant(hindex) = '1') then
-				tmst.haddr := noc_tx_reg.flit(1);
-				if(noc_tx_reg.flit(0)(16) = '1') then
-					tmst.hwrite := '1';
-				else
-					tmst.hwrite := '0';
-				end if;
-				tmst.htrans := noc_tx_reg.flit(0)(18 downto 17);
-				tmst.hsize := noc_tx_reg.flit(0)(21 downto 19);
-				tmst.hburst := noc_tx_reg.flit(0)(24 downto 22);
-				tmst.hprot := noc_tx_reg.flit(0)(28 downto 25);
-				state := 2;
+		if(state = 0) then
+			if(rmst.hready = '1') then 
+				tmst := ahbm_none;
 			end if;
-		elsif(state = 2) then
+		elsif(state = 1) then
+			tmst.hbusreq := '1';
+			if(rmst.hgrant(hindex) = '1' and rmst.hready = '1') then
+				if(rmst.hresp = "00") then
+					tmst.haddr := noc_tx_reg.flit(1);
+					if(noc_tx_reg.flit(0)(15) = '1') then
+						tmst.hwrite := '1';
+					else
+						tmst.hwrite := '0';
+					end if;
+					tmst.htrans := noc_tx_reg.flit(0)(14 downto 13);
+					tmst.hsize := noc_tx_reg.flit(0)(12 downto 10);
+					tmst.hburst := noc_tx_reg.flit(0)(9 downto 7);
+					tmst.hprot := noc_tx_reg.flit(0)(6 downto 3);
+					state := 2;
+				end if;
+			end if;
+		elsif(state = 2) then  -- execute write and then idle; errors will be not detected
 			tmst.hbusreq := '0';
-			if(noc_tx_reg.flit(0)(16) = '1') then
+			if(noc_tx_reg.flit(0)(15) = '1') then
+				tmst := ahbm_none;
 				tmst.hwdata(31 downto 0) := noc_tx_reg.flit(2);
 				busy := '0'; -- ahb write done; clear transaction
+				state := 0;
 			else
 				state := 3;
 			end if;
 		elsif(state = 3) then
-			resp.flit(0) <= noc_tx_reg.flit(0);
-			resp.flit(1) <= rmst.hrdata(31 downto 0);
-			resp_ready <= '1';
-			busy := '0'; -- ahb read done; clear transaction
-			state := 0;
+			if(rmst.hready = '1') then
+				tmst := ahbm_none;
+				resp.flit(0) <= noc_tx_reg.flit(0);
+				resp.flit(0)(1 downto 0) <= "00";
+				if(rmst.hresp = "00") then
+					resp.flit(1) <= rmst.hrdata(31 downto 0);
+				elsif(rmst.hresp = "01") then
+					resp.flit(0)(1 downto 0) <= "01";
+				end if;
+				resp_ready <= '1';
+				busy := '0'; -- ahb read done; clear transaction
+				state := 0;
+			---- ERROR Handling -------------------------------------------
+			elsif(rmst.hresp = "01") then -- TODO: SPLIT/RETRY Handling!!!!
+				tmst.htrans := "00";
+			end if;
 		end if;
 		ahbmo <= tmst;
 	end if;
+	ahbmo.hconfig <= hconfig;
+  	ahbmo.hindex  <= hindex;
 end process vcmst_proc;
 
 end Behavioral;

@@ -67,16 +67,16 @@ architecture rtl of top_noc is
 --  others => zero32);
  
 signal io_transfer, le_transfer : transfer_reg;
-signal lef, iof, lev, iov : std_logic; -- full&valid signal
+signal le_ack, io_ack, le_ready, io_ready : std_logic; -- full&valid signal
   
 begin
 
 le_ni: nocside
 	generic map(leon_hindex, '0')
-	port map(rst, clk, le_irq, lef, lev, iof, iov, le_transfer, io_transfer, le_slvi, le_slvo);
+	port map(rst, clk, le_irq, le_ready, le_ack, le_transfer, io_ready, io_ack, io_transfer, le_slvi, le_slvo);
 	
 io_ni: nocside
 	generic map(io_hindex, '0')
-	port map(rst, clk, io_irq, iof, iov, lef, lev, io_transfer, le_transfer, io_slvi, io_slvo);
+	port map(rst, clk, io_irq, io_ready, io_ack, io_transfer, le_ready, le_ack, le_transfer, io_slvi, io_slvo);
 
 end rtl;

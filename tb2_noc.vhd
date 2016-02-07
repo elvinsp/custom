@@ -150,7 +150,7 @@ BEGIN
       wait for 200 ns;	
 		ahbwrite(x"40000014", x"11111111", "10", 2, false , le1_ctrl);
 		wait until clkm'event and clkm='1';
-		ahbwrite(x"40000010", x"10050040", "10", 2, false , le1_ctrl);
+		ahbwrite(x"40000010", x"400500f0", "10", 2, false , le1_ctrl);
 		wait until clkm'event and clkm='1';
 		ahbtbmidle(false, le1_ctrl);
 		wait for 200 ns;
@@ -158,21 +158,21 @@ BEGIN
 		wait until clkm'event and clkm='1';
 		ahbwrite(x"40000018", x"44444444", "10", 2, false , le1_ctrl);
 		wait until clkm'event and clkm='1';
---		ahbwrite(x"40000010", x"10050040", "10", 2, false , le1_ctrl);
---		wait until clkm'event and clkm='1';
---		ahbtbmidle(false, le1_ctrl);
---		--wait until clkm'event and clkm='1';
---		--wait until clkm'event and clkm='1';
---		ahbwrite(x"4000001c", x"88888888", "10", 2, false , le1_ctrl);
---		wait until clkm'event and clkm='1';
---		ahbwrite(x"40000010", x"10050040", "10", 2, false , le1_ctrl);
---		wait until clkm'event and clkm='1';
---		ahbtbmidle(false, le1_ctrl);
---		wait until clkm'event and clkm='1';
---		--wait until clkm'event and clkm='1';
---		ahbwrite(x"40000014", x"22222222", "10", 2, false , le1_ctrl);
---		wait until clkm'event and clkm='1';
---		ahbwrite(x"40000010", x"10000040", "10", 2, false , le1_ctrl);
+		ahbwrite(x"40000010", x"400500f0", "10", 2, false , le1_ctrl);
+		wait until clkm'event and clkm='1';
+		ahbtbmidle(false, le1_ctrl);
+		--wait until clkm'event and clkm='1';
+		--wait until clkm'event and clkm='1';
+		ahbwrite(x"4000001c", x"88888888", "10", 2, false , le1_ctrl);
+		wait until clkm'event and clkm='1';
+		ahbwrite(x"40000010", x"10050040", "10", 2, false , le1_ctrl);
+		wait until clkm'event and clkm='1';
+		ahbtbmidle(false, le1_ctrl);
+		wait until clkm'event and clkm='1';
+		--wait until clkm'event and clkm='1';
+		ahbwrite(x"40000014", x"22222222", "10", 2, false , le1_ctrl);
+		wait until clkm'event and clkm='1';
+--		ahbwrite(x"40000010", x"40000010", "10", 2, false , le1_ctrl);
 --		wait until clkm'event and clkm='1';
 		ahbtbmidle(false, le1_ctrl);
 		wait for 100 ns;
@@ -189,18 +189,31 @@ BEGIN
 		mst_tx <= noc_transfer_none;
 		
 		wait for 800 ns;
-		mst_tx.flit(0)(16) <= '1'; -- hwrite
-		mst_tx.flit(0)(18 downto 17) <= "10";  -- htrans
-		mst_tx.flit(0)(21 downto 19) <= "010"; -- hsize
-		mst_tx.flit(0)(24 downto 22) <= "000"; -- hburst
-		mst_tx.flit(0)(28 downto 25) <= "0000"; -- hprot
+		mst_tx.flit(0)(15) <= '1'; -- hwrite
+		mst_tx.flit(0)(14 downto 13) <= "10";  -- htrans
+		mst_tx.flit(0)(12 downto 10) <= "010"; -- hsize
+		mst_tx.flit(0)(9 downto 7) <= "000"; -- hburst
+		mst_tx.flit(0)(6 downto 3) <= "0000"; -- hprot
+		mst_tx.flit(1) <= x"40000010";
+		mst_tx.flit(2) <= x"400300f0";
+		wait until clkm'event and clkm='1';
+		mst_tx_ready <= '1';
+		wait until mst_tx_ack = '1';
+		wait until clkm'event and clkm='1';
+		mst_tx_ready <= '0';
+		---------------------------
+		mst_tx.flit(0)(15) <= '0'; -- hwrite
+		mst_tx.flit(0)(14 downto 13) <= "10";  -- htrans
+		mst_tx.flit(0)(12 downto 10) <= "010"; -- hsize
+		mst_tx.flit(0)(9 downto 7) <= "000"; -- hburst
+		mst_tx.flit(0)(6 downto 3) <= "0000"; -- hprot
 		mst_tx.flit(1) <= x"40000010";
 		mst_tx.flit(2) <= x"10030040";
 		wait until clkm'event and clkm='1';
 		mst_tx_ready <= '1';
 		wait until mst_tx_ack = '1';
 		wait until clkm'event and clkm='1';
-		mst_tx_ready <= '0';		
+		mst_tx_ready <= '0';
 			
 		wait;
 	end process;
