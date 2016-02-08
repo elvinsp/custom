@@ -193,10 +193,14 @@ begin
 			end if;
 		---- HSEL inactive ----
 		else
-			tslv := ahbs_none;
-			bstate := 0;
-			if(bstate = 1) then
+			if(tslv.hresp /= "00" and tslv.hready = '1') then
+				tslv := ahbs_none;
+			else
+				tslv.hready := '1';
 			end if;
+			if(bstate = 1) then ----------- finish up request and send it!!!!
+			end if;
+			bstate := 0;
 		end if;
 		---- NoC-Response and SPLIT continuation -----------------------------------
 		if(resp_ready = '1' and fresp = '0') then
@@ -206,10 +210,11 @@ begin
 				noc_rx_reg := resp;
 				split := conv_integer(noc_rx_reg.flit(0)(27 downto 24));
 			else
-				split := 16;
 				fresp := '0';
+				split := 16;
 			end if;
 		end if;
+		---- Set/Reset Split indicator ---------------------------------------------
 		if(split < 16) then
 			tslv.hsplit(split) := '1';
 		else

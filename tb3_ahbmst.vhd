@@ -113,10 +113,11 @@ BEGIN
 	
 	slv_proc: process(rstn, clkm)
 	variable bnoc : noc_transfer_reg;
-	variable busy : std_logic;
+	variable rbusy, tbusy : std_logic;
 	begin
 		if(rstn = '0') then
-			busy := '0';
+			rbusy := '0';
+			tbusy := '0';
 			slv_tx_ack <= '0';
 			slv_rx_ready <= '0';
 			slv_rx <= noc_transfer_none;
@@ -124,19 +125,24 @@ BEGIN
 		elsif(clkm'event and clkm = '1') then
 			if(slv_tx_ready = '0') then 
 				slv_tx_ack <= '0';
-				busy := '0';
+				tbusy := '0';
 			end if;
-			if(slv_rx_ack = '1') then slv_rx_ready <= '0';
+			-------------
+			if(slv_rx_ack = '1') then 
+				slv_rx_ready <= '0';
 			end if;
-			if(slv_tx_ready = '1' and busy = '0') then
+			-------------
+			if(slv_tx_ready = '1' and tbusy = '0') then
+				tbusy := '1';
 				if(conv_integer(slv_tx.len) > 1) then
-					busy := '1';
 					bnoc := slv_tx;
+					rbusy := '0';
 				end if;
 				slv_tx_ack <= '1';
 			end if;
 			-- respond to read request
-			if(bnoc.len /= "000" and bnoc.flit(0)(15) = '0' and bnoc.flit(0)(9 downto 7) = "000") then
+			if(bnoc.len /= "000" and bnoc.flit(0)(15) = '0' and bnoc.flit(0)(9 downto 7) = "000" and rbusy = '0') then
+				rbusy := '1';
 				bnoc.flit(1) := x"12345678";
 				bnoc.flit(0)(31 downto 28) := "0011";
 				slv_rx <= bnoc;
@@ -153,7 +159,7 @@ BEGIN
       wait for 100 ns;
 		-------------------------------------------------
 		wait until clkm'event and clkm='1';
-		ahbread(x"40000014", x"f1234000", "10", 2, false , ctrl);
+		ahbread(x"40000014", x"12345678", "10", 2, false , ctrl);
 		wait until clkm'event and clkm='1';
 		--ahbread(x"40000018", x"fffff000", "10", 2, false , ctrl);
 		--wait until clkm'event and clkm='1';
