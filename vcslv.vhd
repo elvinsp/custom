@@ -63,8 +63,11 @@ vcslv_proc: process(clk, res)
 variable rslv : ahb_slv_in_type;
 variable tslv : ahb_slv_out_type;
 variable noc_tx_reg : noc_transfer_reg;
+variable noc_rx_reg : noc_transfer_reg;
 variable flit_index : integer range 2 to 4;
-variable state : integer range 0 to 1;
+variable bstate : integer range 0 to 1; -- burst state
+variable split : integer range 0 to 16;
+variable fresp : std_logic;
 --generate for split handling
 --variable transfers : noc_transfer_reg is array 0 to (nahbmst-1)
 begin
@@ -72,68 +75,110 @@ begin
 		ahbso <= ahbs_none;
 		tslv := ahbs_none;
 		noc_tx_reg := noc_transfer_none;
-		state := 0;
+		noc_rx_reg := noc_transfer_none;
+		requ_ready <= '0';
+		requ <= noc_transfer_none;
+		resp_ack <= '0';
+		fresp := '0';
+		bstate := 0; -- no bursts
+		split := 16;
 	elsif(clk'event and clk = '1') then
+		if(requ_ack = '1') then requ_ready <= '0';
+		end if;
+		if(resp_ready = '0') then resp_ack <= '0';
+		end if;
+		---- AHB -----------------------------------------------------------
 		rslv := ahbsi;
 		if(rslv.hsel(hindex) = '1') then
 			if(tslv.hresp = "00") then -- check in which response mode the slave is in
+				---- HTRANS: NONSEQ ----
 				if(rslv.htrans = "10") then
-					-- NONSEQ: Start new transmission
-					if(state = 0) then
-						noc_tx_reg.flit(0)(15) := rslv.hwrite;
-						noc_tx_reg.flit(0)(14 downto 13) := rslv.htrans;
-						noc_tx_reg.flit(0)(12 downto 10) := rslv.hsize;
-						noc_tx_reg.flit(0)(9 downto 7) := rslv.hburst;
-						noc_tx_reg.flit(0)(6 downto 3) := rslv.hprot;
-						noc_tx_reg.flit(1) := rslv.haddr;
-						if(rslv.hwrite = '1') then
-							if(rslv.hburst = "000") then -- SINGLE
-								noc_tx_reg.len := conv_std_logic_vector(2,3);
-								noc_tx_reg.addr := conv_std_logic_vector(ioaddr,4);
-								requ <= noc_tx_reg;
-								requ_ready <= '1';
-								tslv.hresp := "00";
-							else -- INCR/WRAP
-								
+					-- check if incoming AHB request is an old one which can be served (valid length; ahb_response_header; split id)
+					if(conv_integer(noc_rx_reg.len) > 1 and noc_rx_reg.flit(0)(31 downto 28) = "0011" and rslv.hmaster = noc_rx_reg.flit(0)(27 downto 24)) then
+						-- it can only be a read request
+						if(rslv.hwrite = '0') then
+							tslv.hresp := "00";
+							tslv.hrdata(31 downto 0) := noc_rx_reg.flit(1);
+							if(noc_rx_reg.flit(0)(9 downto 7) = "000") then
+								fresp := '0';
+								noc_rx_reg := noc_transfer_none;
 							end if;
 						else
-							-- Doesn't matter if hburst INCR/WARP/SINGLE all will be handle on remote master inf
-							noc_tx_reg.len := conv_std_logic_vector(2,3);
+							noc_rx_reg := noc_transfer_none;
+							tslv.hresp := "01";
+							tslv.hready := '0';
+						end if;
+						split := 16; -- clear SPLIT
+					-- new AHB request
+					else
+						-- Handle old AHB Burst first, before beginning new Burst
+						if(bstate = 1) then
+							noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
 							noc_tx_reg.addr := conv_std_logic_vector(ioaddr,4);
 							requ <= noc_tx_reg;
 							requ_ready <= '1';
 							tslv.hresp := "11"; -- initiate SPLIT for read prefetch from remote location
 							tslv.hready := '0';
+						-- Start new AHB Burst
+						elsif(bstate = 0) then
+							noc_tx_reg.flit(0)(27 downto 24) := rslv.hmaster;
+							noc_tx_reg.flit(0)(15) := rslv.hwrite;
+							noc_tx_reg.flit(0)(14 downto 13) := rslv.htrans;
+							noc_tx_reg.flit(0)(12 downto 10) := rslv.hsize;
+							noc_tx_reg.flit(0)(9 downto 7) := rslv.hburst;
+							noc_tx_reg.flit(0)(6 downto 3) := rslv.hprot;
+							noc_tx_reg.flit(1) := rslv.haddr;
+							if(rslv.hwrite = '1') then
+								if(rslv.hburst = "000") then -- SINGLE
+									noc_tx_reg.len := conv_std_logic_vector(2,3);
+									noc_tx_reg.addr := conv_std_logic_vector(ioaddr,4);
+									requ <= noc_tx_reg;
+									requ_ready <= '1';
+									tslv.hresp := "00";
+								else -- INCR/WRAP
+									noc_tx_reg.addr := conv_std_logic_vector(ioaddr,4);
+								end if;
+							else
+								-- Doesn't matter if hburst INCR/WARP/SINGLE all will be handle on remote master inf
+								noc_tx_reg.len := conv_std_logic_vector(2,3);
+								noc_tx_reg.addr := conv_std_logic_vector(ioaddr,4);
+								requ <= noc_tx_reg;
+								requ_ready <= '1';
+								tslv.hresp := "11"; -- initiate SPLIT for read prefetch from remote location
+								tslv.hready := '0';
+							end if;
+							bstate := 1; -- new burst started
 						end if;
-						state := 1;
-					-- NONSEQ: Handle old transmission first, before beginning new one
-					elsif(state = 1) then
-						noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
-						noc_tx_reg.addr := conv_std_logic_vector(ioaddr,4);
-						requ <= noc_tx_reg;
-						requ_ready <= '1';
-						tslv.hresp := "11"; -- initiate SPLIT for read prefetch from remote location
+					end if;
+				---- HTRANS: SEQ ----
+				elsif(rslv.htrans = "11") then
+					-- check if burst was started before
+					if(bstate = 1) then
+						-- continue caching HWDATA
+						if(rslv.hwrite = '1') then
+							if(flit_index < 5) then
+								noc_tx_reg.flit(flit_index) := rslv.hwdata(31 downto 0);
+								flit_index := flit_index + 1; ---------------------------------------- 5-Boundary?
+							else
+								-- full packet therefore transmit it
+								noc_tx_reg.len := conv_std_logic_vector(5,3);
+								noc_tx_reg.addr := conv_std_logic_vector(ioaddr,4);
+								requ <= noc_tx_reg;
+								requ_ready <= '1';
+								flit_index := 2;
+							end if;
+						end if;
+					---- Burst was never started; ERROR ----
+					else
+						tslv.hresp := "01";
 						tslv.hready := '0';
 					end if;
-				elsif(rslv.htrans = "11") then
-					-- SEQ continue transmission for write
-					
-					if(rslv.hwrite = '1') then
-						if(flit_index < 5) then
-							noc_tx_reg.flit(flit_index) := rslv.hwdata(31 downto 0);
-							flit_index := flit_index + 1;
-						else
-							-- full packet therefore transmit it
-							noc_tx_reg.len := conv_std_logic_vector(5,3);
-							noc_tx_reg.addr := conv_std_logic_vector(ioaddr,4);
-							requ <= noc_tx_reg;
-							requ_ready <= '1';
-							flit_index := 2;
-						end if;
-					end if;
-				else
+				---- HTRANS: IDLE ----
+				elsif(rslv.htrans = "00") then
+					-- Burst complete or Error handling complete?
 					flit_index := 2;
 				end if;
+				---- End of HTRANS ----
 			---- ERROR/SPLIT Handling(3/3) -----------------------------------------
 			elsif(tslv.hresp /= "00" and tslv.hready = '1') then
 				-- 2nd cycle of two-cycle response according to AMBA Spec (Rev 2.0) Chapter 3.9.3
@@ -144,20 +189,39 @@ begin
 				end if;
 			---- ERROR/SPLIT Handling(2/3) -----------------------------------------
 			else
-				tslv.hready := '0';
+				tslv.hready := '1';
 			end if;
-		else -- if(rslv.hsel(hindex) = '1')
+		---- HSEL inactive ----
+		else
 			tslv := ahbs_none;
-			state := 0;
-			if(state = 1) then
+			bstate := 0;
+			if(bstate = 1) then
 			end if;
 		end if;
+		---- NoC-Response and SPLIT continuation -----------------------------------
+		if(resp_ready = '1' and fresp = '0') then
+			resp_ack <= '1';
+			fresp := '1';
+			if(conv_integer(resp.len) > 1) then
+				noc_rx_reg := resp;
+				split := conv_integer(noc_rx_reg.flit(0)(27 downto 24));
+			else
+				split := 16;
+				fresp := '0';
+			end if;
+		end if;
+		if(split < 16) then
+			tslv.hsplit(split) := '1';
+		else
+			tslv.hsplit := x"0000";
+		end if;
+		----------------------------------------------------------------------------
 		ahbso <= tslv;
 	end if;
-	-- LEON Side AHB Slave
+	---- Gaisler AHB Plug&Play status ---------------------------------------------
 	ahbso.hconfig <= hconfig;
   	ahbso.hindex  <= hindex;
+	
 end process vcslv_proc;
 
 end Behavioral;
-

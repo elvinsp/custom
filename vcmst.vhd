@@ -122,6 +122,15 @@ begin
 		elsif(state = 3) then
 			if(rmst.hready = '1') then
 				tmst := ahbm_none;
+				if(rmst.hresp = "11") then
+					state := 1;
+				else
+					busy := '0'; -- ahb read done; clear transaction
+					state := 0;
+				end if;
+			---- ERROR Handling -------------------------------------------
+			elsif(rmst.hresp /= "00") then -- TODO: SPLIT/RETRY Handling!!!!
+				tmst.htrans := "00";
 				resp.flit(0) <= noc_tx_reg.flit(0);
 				resp.flit(0)(1 downto 0) <= "00";
 				if(rmst.hresp = "00") then
@@ -130,11 +139,6 @@ begin
 					resp.flit(0)(1 downto 0) <= "01";
 				end if;
 				resp_ready <= '1';
-				busy := '0'; -- ahb read done; clear transaction
-				state := 0;
-			---- ERROR Handling -------------------------------------------
-			elsif(rmst.hresp = "01") then -- TODO: SPLIT/RETRY Handling!!!!
-				tmst.htrans := "00";
 			end if;
 		end if;
 		ahbmo <= tmst;
