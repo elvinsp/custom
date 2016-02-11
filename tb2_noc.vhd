@@ -156,11 +156,11 @@ BEGIN
 		wait for 200 ns;
 		wait until clkm'event and clkm='1';
 		wait until clkm'event and clkm='1';
-		ahbwrite(x"40000018", x"44444444", "10", 2, false , le1_ctrl);
+		ahbwrite(x"40000014", x"44444444", "10", 2, false , le1_ctrl);
 		wait until clkm'event and clkm='1';
-		ahbwrite(x"40000010", x"400500f0", "10", 2, false , le1_ctrl);
+		ahbwrite(x"40000018", x"400500f0", "10", 2, false , le1_ctrl);
 		wait until clkm'event and clkm='1';
-		ahbtbmidle(false, le1_ctrl);
+		--ahbtbmidle(false, le1_ctrl);
 		--wait until clkm'event and clkm='1';
 		--wait until clkm'event and clkm='1';
 		ahbwrite(x"4000001c", x"88888888", "10", 2, false , le1_ctrl);

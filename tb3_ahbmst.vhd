@@ -70,7 +70,7 @@ BEGIN
 
 	-- Instantiate the Unit Under Test (UUT)
    slv0: vcslv
-		generic map(hindex => 0)
+		generic map(hindex => 0, ioaddr => 7)
 		port map(rstn, clkm, slv_tx_ready, slv_tx_ack, slv_tx, slv_rx_ready, slv_rx_ack, slv_rx, ahbsi, ahbso(0));
 		  
 	ahb0 : ahbctrl       -- AHB arbiter/multiplexer
@@ -158,11 +158,21 @@ BEGIN
 		ahbtbminit(ctrl); -- at 100ns
       wait for 100 ns;
 		-------------------------------------------------
-		wait until clkm'event and clkm='1';
-		ahbread(x"40000014", x"12345678", "10", 2, false , ctrl);
-		wait until clkm'event and clkm='1';
-		--ahbread(x"40000018", x"fffff000", "10", 2, false , ctrl);
 		--wait until clkm'event and clkm='1';
+		--ahbread(x"40000010", x"12345678", "10", 2, false , ctrl);
+		wait until clkm'event and clkm='1';
+		ahbwrite(x"40000014", x"aaaaaaaa", "10", "10", '1', 2, false , ctrl);
+		wait until clkm'event and clkm='1';
+		ahbwrite(x"40000018", x"88888888", "10", "10", '1', 2, false , ctrl);
+		wait until clkm'event and clkm='1';
+		ahbtbmidle(false, ctrl);
+		wait until clkm'event and clkm='1';
+		ahbwrite(x"4000001c", x"ffffffff", "10", "10", '1', 2, false , ctrl);
+		wait until clkm'event and clkm='1';
+		ahbwrite(x"40000020", x"44444444", "10", "11", '1', 2, false , ctrl);
+		wait until clkm'event and clkm='1';
+		ahbread(x"40000010", x"12345678", "10", 2, false , ctrl);
+		wait until clkm'event and clkm='1';
 		ahbtbmidle(false, ctrl);
 		--wait for 200 ns;
 		-------------------------------------------------
