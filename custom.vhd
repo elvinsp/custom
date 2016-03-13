@@ -78,7 +78,10 @@ end component;
 
 component vcslv is
     generic( hindex : integer := 0;
-				 nahbmst : integer := 1;
+				 membar : integer := 16#600#;
+				 memmask : integer := 16#fff#;
+				 iobar : integer := 16#800#;
+				 iomask : integer := 16#fff#;
 				 memaddr : integer range 0 to 16 := 16;
 				 ioaddr : integer range 0 to 16 := 16);
     port ( res : in  STD_LOGIC;
@@ -91,6 +94,63 @@ component vcslv is
 			  resp : in noc_transfer_reg;
 			  ahbsi : in ahb_slv_in_type;
 			  ahbso : out ahb_slv_out_type);
+end component;
+
+component vcctrl is
+    generic( hindex : integer := 0;
+				 cbar : integer := 16#C00#;
+				 cmask : integer := 16#fff#;
+				 membar : integer := 16#600#;
+				 memmask : integer := 16#fff#;
+				 iobar : integer := 16#800#;
+				 iomask : integer := 16#fff#);
+    Port ( res : in  STD_LOGIC;
+           clk : in  STD_LOGIC;
+			  ahbsi : in ahb_slv_in_type;
+			  ahbso : out ahb_slv_out_type;
+			  vcmi_r : in std_logic;
+			  vcmi_a : out std_logic;
+			  vcmi : in noc_transfer_reg;
+			  vcmo_r : out std_logic;
+			  vcmo_a : in std_logic;
+			  vcmo : out noc_transfer_reg;
+			  vcsi_r : in std_logic;
+			  vcsi_a : out std_logic;
+			  vcsi : in noc_transfer_reg;
+			  vcso_r : out std_logic;
+			  vcso_a : in std_logic;
+			  vcso : out noc_transfer_reg;
+			  vcni_r : in std_logic;
+			  vcni_a : out std_logic;
+			  vcni : in noc_transfer_reg;
+			  vcno_r : out std_logic;
+			  vcno_a : in std_logic;
+			  vcno : out noc_transfer_reg);
+end component;
+
+component vcont is
+	 Generic ( mindex : integer;
+				sindex : integer;
+				cindex : integer;
+				membar : integer := 16#600#;
+				memmask : integer := 16#ff0#;
+				iobar : integer := 16#B00#;
+				iomask : integer := 16#ff8#;
+				cbar : integer := 16#B08#;
+				cmask : integer := 16#fff#);
+    Port ( res : in  STD_LOGIC;
+           clk : in  STD_LOGIC;
+			  ahbmi : in ahb_mst_in_type;
+			  ahbmo : out ahb_mst_out_type;
+			  ahbsi : in ahb_slv_in_type;
+			  ahbso : out ahb_slv_out_type;
+			  ahbco : out ahb_slv_out_type;
+			  vcni_r : in std_logic;
+			  vcni_a : out std_logic;
+			  vcni : in noc_transfer_reg;
+			  vcno_r : out std_logic;
+			  vcno_a : in std_logic;
+			  vcno : out noc_transfer_reg);
 end component;
 
 component vnic
@@ -142,8 +202,31 @@ component top_noc
     io_slvo    : out  ahb_slv_out_type);
 end component;
 
+component testreg
+    generic( hindex : integer := 0; membar : integer := 16#C00#; memmask : integer := 16#fff#);
+    Port ( res : in  STD_LOGIC;
+           clk : in  STD_LOGIC;
+			  ahbsi : in ahb_slv_in_type;
+			  ahbso : out ahb_slv_out_type;
+			  nreg : in noc_transfer_reg;
+			  nreg_r : in std_logic;
+			  nreg_a : in std_logic);
+end component;
+
 function a2i(haddr : std_logic_vector(7 downto 0))
   return integer;
+
+--procedure mstwrite(
+--	constant address : in std_logic_vector(31 downto 0);
+--	constant hwdata0 : in std_logic_vector(31 downto 0);
+--	constant hsize : in std_logic_vector(2 downto 0);
+--	constant len : in integer range 1 to 4;
+--	signal nr_r : in std_logic;
+--	signal nr_a : out std_logic;
+--	signal nr : in noc_transfer_reg;
+--	signal nt_r : out std_logic;
+--	signal nt_a : in std_logic;
+--	signal nt : out noc_transfer_reg);
 
 end custom;
 
