@@ -186,7 +186,27 @@ BEGIN
 		mst0_rx_ready <= '0';
 		wait until clkm'event and clkm = '1';
 		------------------------------------------
-		mst0_rx.len <= "010";
+		mst0_rx.len <= "011";
+		mst0_rx.addr <= "0010";
+		mst0_rx.flit(0)(15) <= '1';
+		mst0_rx.flit(0)(14 downto 13) <= "10";
+		mst0_rx.flit(0)(14 downto 12) <= "010";
+		mst0_rx.flit(0)(7 downto 5) <= "000";
+		mst0_rx.flit(0)(11 downto 8) <= "1110";
+		mst0_rx.flit(0)(31 downto 28) <= "0010";
+		mst0_rx.flit(1) <= x"6000fff0";
+		mst0_rx.flit(2) <= x"11111111";
+		mst0_rx.flit(3) <= x"22222222";
+		mst0_rx.flit(4) <= x"44444444";
+		mst0_rx_ready <= '1';
+		wait until clkm'event and clkm = '1';
+		wait until mst0_rx_ack = '1';
+		wait until clkm'event and clkm = '1';
+		mst0_rx <= noc_transfer_none;
+		mst0_rx_ready <= '0';
+		wait until clkm'event and clkm = '1';
+		------------------------------------------
+		mst0_rx.len <= "100";
 		mst0_rx.addr <= "0010";
 		mst0_rx.flit(0)(15) <= '1';
 		mst0_rx.flit(0)(14 downto 13) <= "10";
@@ -208,7 +228,7 @@ BEGIN
 		------------------------------------------
 		mst0_rx.len <= "010";
 		mst0_rx.addr <= "0010";
-		mst0_rx.flit(0)(15) <= '0';
+		mst0_rx.flit(0)(15) <= '1';
 		mst0_rx.flit(0)(14 downto 13) <= "10";
 		mst0_rx.flit(0)(14 downto 12) <= "010";
 		mst0_rx.flit(0)(7 downto 5) <= "000";

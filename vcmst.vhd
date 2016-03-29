@@ -60,7 +60,7 @@ variable tmst : ahb_mst_out_type;
 variable rmst : ahb_mst_in_type;
 variable noc_tx_reg, noc_rx_reg : noc_transfer_reg;
 variable vaddr, vincr : integer;
-variable busy, tready : std_logic;
+variable busy, tready : std_logic; -- master busy , transmit port ready
 variable state : integer range 0 to 4;
 variable flit_index : integer;
 begin
@@ -84,7 +84,8 @@ begin
 		rmst := ahbmi;
 		if(requ_ready = '1' and busy = '0') then
 			noc_rx_reg := requ;
-			busy := '1'; -- lock on transaction
+			-- master busy no new packets til tready = 0 for new packet transmission
+			busy := '1';
 			requ_ack <= '1';
 			state := 1;
 			flit_index := 0; -- start new packet
@@ -94,12 +95,6 @@ begin
 		end if;
 		if(requ_ready = '0') then requ_ack <= '0';
 		end if;
---		if(busy = '1' and tready = '0') then
---			resp <= noc_tx_reg;
---			resp_ready <= '1';
---			tready := '1';
---			busy := '0';
---		end if;
 		if(resp_ack = '1') then 
 			resp_ready <= '0';
 			tready := '0';

@@ -77,7 +77,8 @@ variable bstate : integer range 0 to 1; -- burst status
 variable split : integer range 0 to 16;
 variable fresp, tx_ready, tx_flag : std_logic;
 variable split_reg : reg16;
-variable sread, swrite : std_logic_vector(3 downto 0);
+variable sread : std_logic_vector(3 downto 0);
+variable swrite : std_logic_vector(4 downto 0);
 --generate for split handling
 --variable transfers : noc_transfer_reg is array 0 to (nahbmst-1)
 begin
@@ -95,8 +96,8 @@ begin
 		bstate := 0; -- no bursts
 		split := 16;
 		split_reg := (others => (others => '0'));
-		sread := "0000";
-		swrite := "0000";
+		sread := "1111";
+		swrite := "01111";
 	elsif(clk'event and clk = '1') then
 		-- TX Ready reset (1/2) --
 		if(requ_ack = '1') then 
@@ -108,12 +109,22 @@ begin
 		if(rslv.hsel(hindex) = '1') then
 			if(tslv.hresp = "00" and tslv.hready = '1') then -- check in which response mode the slave is in
 				if(conv_integer(rslv.hmaster) /= mindex) then -- prevent controller ahb loops
+					if(conv_integer(rslv.hmaster) = conv_integer(split_reg(conv_integer(sread))) 
+												and ((swrite(4) = '0' and conv_integer(sread) < conv_integer(swrite(3 downto 0))) 
+												or (swrite(4) = '1' and conv_integer(sread) >= conv_integer(swrite(3 downto 0))))) then
+						sread := sread + '1';
+						if(sread = "0000") then
+							swrite(4) := '0';
+						end if;
+						tslv.hsplit := (others => '0');
+						split := 16; -- split has been resolved, clear HSPLIT
+					end if;
 					---- HTRANS: NONSEQ ----
 					if(rslv.htrans = "10") then
 						-- check if incoming AHB request is an old one which can be served (valid length; ahb_response_header; split id)
 						if(conv_integer(noc_rx_reg.len) > 1 and noc_rx_reg.flit(0)(31 downto 28) = "0011" and rslv.hmaster = noc_rx_reg.flit(0)(27 downto 24)) then
 							-- it can only be a read request
-							if(rslv.hwrite = '0' and rslv.haddr = split_reg(conv_integer(rslv.hmaster))) then -- redo if write confirm
+							if(rslv.hwrite = '0') then -- redo if write confirm
 								split_reg(conv_integer(rslv.hmaster)) := (others => '0');
 								if(noc_rx_reg.flit(1) = x"ffffffff" and noc_rx_reg.flit(0)(1 downto 0) = "01") then
 									tslv.hresp := "01";
@@ -205,7 +216,8 @@ begin
 										tx_flag := '1';
 										noc_tx_reg := noc_transfer_none;
 									end if;
-									split_reg(conv_integer(rslv.hmaster)) := rslv.haddr;
+									--split_reg(conv_integer(swrite)) := rslv.hmaster;
+									--swrite := swrite + '1';
 									tslv.hresp := "11"; -- initiate SPLIT for read prefetch from remote interface
 									tslv.hready := '0';
 									bstate := 0;
@@ -217,7 +229,8 @@ begin
 								bstate := 1; -- new burst started
 							-- (bstate) Busy because a still pending Request
 							else
-								split_reg(conv_integer(rslv.hmaster)) := rslv.haddr;
+								split_reg(conv_integer(swrite)) := rslv.hmaster;
+								swrite := swrite + '1';
 								tslv.hresp := "11";
 								tslv.hready := '0';
 								bstate := 0;
@@ -259,7 +272,8 @@ begin
 										noc_tx_reg.flit(1) := rslv.haddr;
 										flit_index := 2; ---- start new index at 2 (header and addr used)
 									else
-										split_reg(conv_integer(rslv.hmaster)) := rslv.haddr;
+										split_reg(conv_integer(swrite)) := rslv.hmaster;
+										swrite := swrite + '1';
 										tslv.hresp := "11";
 										tslv.hready := '0';
 										bstate := 0;
@@ -358,6 +372,9 @@ begin
 				fresp := '0';
 				split := 16;
 			end if;
+		elsif(tx_ready = '0' and ((swrite(4) = '0' and conv_integer(sread) < conv_integer(swrite(3 downto 0))) 
+												or (swrite(4) = '1' and conv_integer(sread) >= conv_integer(swrite(3 downto 0))))) then
+			split := conv_integer(split_reg(conv_integer(sread)));
 		end if;
 		---- Set/Reset Split indicator --------------------------------------------------------- SPLIT Queue !!
 		if(split < 16) then
