@@ -45,6 +45,7 @@ entity vcslv is
 				 ioaddr : integer range 0 to 16 := 16);
     Port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;
+			  wrack : in std_logic;
 			  requ_ready : out std_logic;
 			  requ_ack : in std_logic;
 			  requ : out noc_transfer_reg;
@@ -125,7 +126,6 @@ begin
 						if(conv_integer(noc_rx_reg.len) > 1 and noc_rx_reg.flit(0)(31 downto 28) = "0011" and rslv.hmaster = noc_rx_reg.flit(0)(27 downto 24)) then
 							-- it can only be a read request
 							if(rslv.hwrite = '0') then -- redo if write confirm
-								split_reg(conv_integer(rslv.hmaster)) := (others => '0');
 								if(noc_rx_reg.flit(1) = x"ffffffff" and noc_rx_reg.flit(0)(1 downto 0) = "01") then
 									tslv.hresp := "01";
 									tslv.hready := '0';
@@ -224,7 +224,10 @@ begin
 									------------------------------------------------------------------------ SPLIT Queue !!
 								else
 									noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
-									noc_tx_reg.addr := conv_std_logic_vector(0,4); ---------------------------------- Replace Addr!!
+									if(wrack = '0') then
+										tslv.hresp := "11";
+										tslv.hready := '0';
+									end if;
 								end if;
 								bstate := 1; -- new burst started
 							-- (bstate) Busy because a still pending Request
