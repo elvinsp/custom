@@ -37,7 +37,8 @@ use gaisler.custom.all;
 entity testreg is
     generic( hindex : integer := 0;
 				 membar : integer := 16#C00#;
-				 memmask : integer := 16#fff#);
+				 memmask : integer := 16#fff#;
+				 rom : std_logic := '0');
     Port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;
 			  ahbsi : in ahb_slv_in_type;
@@ -72,7 +73,15 @@ begin
 		vaddr := x"00";
 		vincr := 0;
 		vwrite := '0';
-		datastore := (others => (others => '0'));
+		if(rom = '1') then
+			datastore := (2 => x"fffc0000", 3 => x"40000000", 4 => x"30000000", 5 => x"ffffffff", 6 => x"ffffffff", 7 => x"22222222", 
+								8 => x"ffffffff", 9 => x"ffffffff", 10 => x"ffffffff", 11 => x"ffffffff", 12 => x"33333333",others => (others => '0'));
+			datastore(11) := x"33333333";
+			datastore(18) := x"44444444";
+			datastore(19) := x"55555555";
+		else
+			datastore := (others => (others => '0'));
+		end if;
 	elsif(clk'event and clk = '1') then
 		---- AHB -----------------------------------------------------------
 		rslv := ahbsi;

@@ -134,7 +134,11 @@ begin
 							if(noc_rx_reg.flit(0)(15) = '0') then
 								noc_tx_reg.len := conv_std_logic_vector(2,3);
 								noc_tx_reg.flit(0) := noc_rx_reg.flit(0);
-								noc_tx_reg.flit(0)(31 downto 28) := "0011";
+								if(noc_tx_reg.flit(0)(31 downto 28) = "0010") then
+									noc_tx_reg.flit(0)(31 downto 28) := "0011";
+								elsif(noc_tx_reg.flit(0)(31 downto 28) = "0100") then
+									noc_tx_reg.flit(0)(31 downto 28) := "0101";
+								end if;
 							end if;
 							tmst.haddr := noc_rx_reg.flit(1);
 							tmst.haddr(9 downto 0) := conv_std_logic_vector(vaddr+vincr*flit_index,10);
@@ -232,6 +236,18 @@ begin
 				if(rmst.hresp /= "00") then
 					tmst := ahbm_none;
 					if(rmst.hresp = "01") then
+						if(noc_rx_reg.flit(0)(15) = '0' or noc_rx_reg.flit(0)(2) = '1') then
+							noc_tx_reg.flit(0)(1 downto 0) := rmst.hresp;
+							noc_tx_reg.flit(flit_index-1) := x"ffffffff";
+							noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
+							if(tready = '0') then
+								resp <= noc_tx_reg;
+								resp_ready <= '1';
+								tready := '1';
+								busy := '0';
+							end if;
+							state := 0;
+						end if;
 					else
 						tmst.hbusreq := '1';
 						flit_index := flit_index - 2; -- only possible when flit_index increase after each state transition

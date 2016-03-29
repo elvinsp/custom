@@ -78,7 +78,7 @@ BEGIN
 		generic map(hindex => 0)
 		port map(rstn, clkm, mst0_rx_ready, mst0_rx_ack, mst0_rx, mst0_tx_ready, mst0_tx_ack, mst0_tx, ahb0mi, ahb0mo(0));
 	leon_slv0: vcslv
-		generic map(hindex => 0, ioaddr => 7)
+		generic map(hindex => 0, membar => 16#600#)
 		port map(rstn, clkm, slv_tx_ready, slv_tx_ack, slv_tx, slv_rx_ready, slv_rx_ack, slv_rx, ahb0si, ahb0so(0));
 	
 	io_ahb1 : ahbctrl       -- AHB arbiter/multiplexer
@@ -90,7 +90,7 @@ BEGIN
 		generic map(hindex => 0)
 		port map(rstn, clkm, slv_tx_ready, slv_tx_ack, slv_tx, slv_rx_ready, slv_rx_ack, slv_rx, ahb1mi, ahb1mo(0));
 	io_slv1: testreg
-		generic map(hindex => 0, membar => 16#600#)
+		generic map(hindex => 0, membar => 16#500#)
 		port map(rstn, clkm, ahb1si, ahb1so(0));
 
    -- Clock process definitions
@@ -134,10 +134,11 @@ BEGIN
 		mst0_rx.flit(0)(7 downto 5) <= "001"; -- burst
 		mst0_rx.flit(0)(11 downto 8) <= "1110"; -- hprot
 		mst0_rx.flit(0)(31 downto 28) <= "0010";
-		mst0_rx.flit(1) <= x"60000014";
+		mst0_rx.flit(1) <= x"30000014";
 		mst0_rx.flit(2) <= x"12345678";
 		mst0_rx.flit(3) <= x"9abcdef0";
 		mst0_rx.flit(4) <= x"dead0000";
+		mst0_rx.flit(0)(2) <= '1';
 		wait until clkm'event and clkm = '1';
 		mst0_rx_ready <= '1';
 		wait until mst0_rx_ack = '1';

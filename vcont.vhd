@@ -35,9 +35,9 @@ use gaisler.custom.all;
 --use UNISIM.VComponents.all;
 
 entity vcont is
-	 Generic ( mindex : integer;
-				sindex : integer;
-				cindex : integer;
+	 Generic ( mindex : integer; -- master index
+				sindex : integer;   -- slave index
+				cindex : integer;   -- config index (slave)
 				membar : integer := 16#600#;
 				memmask : integer := 16#fff#;
 				iobar : integer := 16#B00#;
@@ -61,21 +61,21 @@ end vcont;
 
 architecture Behavioral of vcont is
 
-signal vcmo, vcmi, vcsi, vcso : noc_transfer_reg := noc_transfer_none;
-signal vcmo_ready, vcmo_ack, vcmi_ready, vcmi_ack : std_logic := '0';
-signal vcsi_ready, vcsi_ack, vcso_ready, vcso_ack : std_logic := '0';
+signal vcmc, vccm, vccs, vcsc : noc_transfer_reg := noc_transfer_none;
+signal vcmc_ready, vcmc_ack, vccm_ready, vccm_ack : std_logic := '0'; -- master out, master in
+signal vccs_ready, vccs_ack, vcsc_ready, vcsc_ack : std_logic := '0'; -- slave out, slave in
 
 begin
 
 	vcont_mst : vcmst
 		generic map(hindex => mindex)
-		port map(res, clk, vcmi_ready, vcmi_ack, vcmi, vcmo_ready, vcmo_ack, vcmo, ahbmi, ahbmo);
+		port map(res, clk, vccm_ready, vccm_ack, vccm, vcmc_ready, vcmc_ack, vcmc, ahbmi, ahbmo);
 	vcont_slv: vcslv
-		generic map(hindex => sindex, membar => membar, memmask => memmask, iobar => iobar, iomask => iomask)
-		port map(res, clk, vcso_ready, vcso_ack, vcso, vcsi_ready, vcsi_ack, vcsi, ahbsi, ahbso);
+		generic map(hindex => sindex, mindex => mindex, membar => membar, memmask => memmask, iobar => iobar, iomask => iomask)
+		port map(res, clk, vcsc_ready, vcsc_ack, vcsc, vccs_ready, vccs_ack, vccs, ahbsi, ahbso);
 	vcont_vcctrl : vcctrl
 		generic map( hindex => cindex, cbar => cbar, cmask => cmask, membar => membar, memmask => memmask, iobar => iobar, iomask => iomask)
-		port map( res, clk, ahbsi, ahbco, vcmo_ready, vcmo_ack, vcmo, vcmi_ready, vcmi_ack, vcmi, vcso_ready, vcso_ack, vcso, vcsi_ready, vcsi_ack, vcsi, vcni_r, vcni_a, vcni, vcno_r, vcno_a, vcno);
+		port map( res, clk, ahbsi, ahbco, vcmc_ready, vcmc_ack, vcmc, vccm_ready, vccm_ack, vccm, vcsc_ready, vcsc_ack, vcsc, vccs_ready, vccs_ack, vccs, vcni_r, vcni_a, vcni, vcno_r, vcno_a, vcno);
 		
 end Behavioral;
 

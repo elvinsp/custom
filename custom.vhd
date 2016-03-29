@@ -82,6 +82,7 @@ component vcslv is
 				 memmask : integer := 16#fff#;
 				 iobar : integer := 16#800#;
 				 iomask : integer := 16#fff#;
+				 mindex : integer := 16;
 				 memaddr : integer range 0 to 16 := 16;
 				 ioaddr : integer range 0 to 16 := 16);
     port ( res : in  STD_LOGIC;
@@ -203,14 +204,11 @@ component top_noc
 end component;
 
 component testreg
-    generic( hindex : integer := 0; membar : integer := 16#C00#; memmask : integer := 16#fff#);
+    generic( hindex : integer := 0; membar : integer := 16#C00#; memmask : integer := 16#fff#; rom : std_logic := '0');
     Port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;
 			  ahbsi : in ahb_slv_in_type;
-			  ahbso : out ahb_slv_out_type;
-			  nreg : in noc_transfer_reg;
-			  nreg_r : in std_logic;
-			  nreg_a : in std_logic);
+			  ahbso : out ahb_slv_out_type);
 end component;
 
 function a2i(haddr : std_logic_vector(7 downto 0))

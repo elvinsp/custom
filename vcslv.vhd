@@ -63,7 +63,7 @@ constant hconfig : ahb_config_type := (
   --5 => ahb_iobar(16#500#, 16#f00#),
   others => zero32);
   
-type reg16 is array (0 to 15) of std_logic_vector(31 downto 0);
+type reg16 is array (0 to 15) of std_logic_vector(3 downto 0);
 
 begin
 
@@ -77,6 +77,7 @@ variable bstate : integer range 0 to 1; -- burst status
 variable split : integer range 0 to 16;
 variable fresp, tx_ready, tx_flag : std_logic;
 variable split_reg : reg16;
+variable sread, swrite : std_logic_vector(3 downto 0);
 --generate for split handling
 --variable transfers : noc_transfer_reg is array 0 to (nahbmst-1)
 begin
@@ -94,6 +95,8 @@ begin
 		bstate := 0; -- no bursts
 		split := 16;
 		split_reg := (others => (others => '0'));
+		sread := "0000";
+		swrite := "0000";
 	elsif(clk'event and clk = '1') then
 		-- TX Ready reset (1/2) --
 		if(requ_ack = '1') then 
@@ -110,16 +113,23 @@ begin
 						-- check if incoming AHB request is an old one which can be served (valid length; ahb_response_header; split id)
 						if(conv_integer(noc_rx_reg.len) > 1 and noc_rx_reg.flit(0)(31 downto 28) = "0011" and rslv.hmaster = noc_rx_reg.flit(0)(27 downto 24)) then
 							-- it can only be a read request
-							if(rslv.hwrite = '0' and rslv.haddr = split_reg(conv_integer(rslv.hmaster))) then
+							if(rslv.hwrite = '0' and rslv.haddr = split_reg(conv_integer(rslv.hmaster))) then -- redo if write confirm
 								split_reg(conv_integer(rslv.hmaster)) := (others => '0');
-								tslv.hresp := "00";
-								tslv.hrdata(31 downto 0) := noc_rx_reg.flit(1);
-								flit_index := 2;
-								if(noc_rx_reg.flit(0)(7 downto 5) = "000") then
+								if(noc_rx_reg.flit(1) = x"ffffffff" and noc_rx_reg.flit(0)(1 downto 0) = "01") then
+									tslv.hresp := "01";
+									tslv.hready := '0';
 									fresp := '0';
 									noc_rx_reg := noc_transfer_none;
 								else
-									bstate := 1; -- go into burst mode
+									tslv.hresp := "00";
+									tslv.hrdata(31 downto 0) := noc_rx_reg.flit(1);
+									flit_index := 2;
+									if(noc_rx_reg.flit(0)(7 downto 5) = "000") then
+										fresp := '0';
+										noc_rx_reg := noc_transfer_none;
+									else
+										bstate := 1; -- go into burst mode
+									end if;
 								end if;
 							else
 								noc_rx_reg := noc_transfer_none;
@@ -160,7 +170,8 @@ begin
 										noc_tx_reg.len := conv_std_logic_vector(2,3);
 										noc_tx_reg.addr := conv_std_logic_vector(0,4); -------------------------------------- Replace Addr!!
 									else
-										split_reg(conv_integer(rslv.hmaster)) := rslv.haddr;
+										split_reg(conv_integer(swrite)) := rslv.hmaster;
+										swrite := swrite + '1';
 										tslv.hresp := "11";
 										tslv.hready := '0';
 										bstate := 0;
@@ -218,7 +229,7 @@ begin
 						-- check if burst was started before
 						if(bstate = 1) then
 							-- continue caching HWDATA
-							if(rslv.hwrite = '1') then
+							if(rslv.hwrite = '1') then ---- insert: and write_ack = '1' ---------------------------------- !!
 								if(flit_index < 4) then
 									noc_tx_reg.flit(flit_index) := rslv.hwdata(31 downto 0);
 									flit_index := flit_index + 1; ---- increase after use and before setting length (index starts at 0, length starts at 1)
@@ -259,12 +270,24 @@ begin
 							-- read
 							else
 								if(flit_index = 4) then
-									tslv.hrdata(31 downto 0) := noc_rx_reg.flit(flit_index);
+									if(noc_rx_reg.flit(flit_index) = x"ffffffff" and noc_rx_reg.flit(0)(1 downto 0) = "01") then
+										tslv.hresp := "01";
+										tslv.hready := '1';
+									else
+										tslv.hrdata(31 downto 0) := noc_rx_reg.flit(flit_index);
+									end if;
 									fresp := '0';
 									noc_rx_reg := noc_transfer_none;
 								else
-									tslv.hrdata(31 downto 0) := noc_rx_reg.flit(flit_index);
-									flit_index := flit_index + 1;
+									if(noc_rx_reg.flit(flit_index) = x"ffffffff" and noc_rx_reg.flit(0)(1 downto 0) = "01") then
+										tslv.hresp := "01";
+										tslv.hready := '1';
+										fresp := '0';
+										noc_rx_reg := noc_transfer_none; 
+									else
+										tslv.hrdata(31 downto 0) := noc_rx_reg.flit(flit_index);
+										flit_index := flit_index + 1;
+									end if;
 								end if;
 							end if;
 							---- HWRITE ----

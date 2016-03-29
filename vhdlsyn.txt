@@ -2,3 +2,5 @@ custom.vhd
 testreg.vhd
 vcmst.vhd
 vcslv.vhd
+vcctrl.vhd
+vcont.vhd

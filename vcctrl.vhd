@@ -69,7 +69,7 @@ end vcctrl;
 architecture Behavioral of vcctrl is
 
 constant hconfig : ahb_config_type := (
-  0 => ahb_device_reg ( 16#01#, 16#01B#, 0, 0, 0), --ahb_device_reg (VENDOR_EXAMPLE, EXAMPLE_AHBRAM, 0, 0, 0)
+  0 => ahb_device_reg ( 16#01#, 16#016#, 0, 0, 0), --ahb_device_reg (VENDOR_EXAMPLE, EXAMPLE_AHBRAM, 0, 0, 0)
   4 => ahb_membar(cbar, '0', '0', cmask), -- ahb_membar(memaddr, '0', '0', memmask), others => X"00000000");
   others => zero32);
 
@@ -77,27 +77,58 @@ constant baddr : std_logic_vector(23 downto 0) := conv_std_logic_vector(cbar,12)
   
 type store is array (0 to 63) of std_logic_vector(31 downto 0);
 signal datastore : store;
+constant storemask : store := (0 => x"ffbfffff", 1 => x"ffffffff", 2 => x"ffffffff", 3 => x"ffffffff", 4 => x"ffffffff", others => (others => '0'));
+constant pagebase : integer := 8;
+signal co_r, co_a : std_logic;
+signal co : noc_transfer_reg;
 
 begin
 
 vni_proc: process (clk, res)
-variable mo_r, so_r : std_logic; -- master out, slave out;
+variable mo_r, so_r, cready, mready, sready : std_logic; -- master out, slave out;
 begin
 	if(res = '0') then
+		mready := '0';
+		sready := '0';
+		cready := '0';
+		co_r <= '0';
+		co <= noc_transfer_none;
 		mo_r := '0';
 		so_r := '0';
 		vcmo_r <= '0';
+		vcmo <= noc_transfer_none;
 		vcso_r <= '0';
+		vcso <= noc_transfer_none;
 		vcni_a <= '0';
 	elsif(clk'event and clk = '1') then
+		if(co_r = '1') then
+			cready := '1';
+		end if;
+		if(mo_r = '1') then
+			mready := '1';
+		end if;
+		if(so_r = '1') then
+			sready := '1';
+		end if;
 		if(vcni_r = '1') then
-			if(vcni.flit(0)(31 downto 28) = "0010" and mo_r = '0') then
+			if((vcni.flit(0)(31 downto 28) = "0101" or vcni.flit(0)(31 downto 28) = "0011") and vcni.flit(0)(27 downto 24) = "1111") then
+				---- for vcctrl internal use
+				if(co_r = '0') then
+					co <= vcni;
+					co_r <= '1';
+					cready := '0';
+					vcni_a <= '1';
+				end if;
+			elsif((vcni.flit(0)(31 downto 28) = "0010" or vcni.flit(0)(31 downto 28) = "0100") and mo_r = '0') then
 				vcmo <= vcni;
 				mo_r := '1';
+				mready := '0';
 				vcni_a <= '1';
 			elsif(vcni.flit(0)(31 downto 28) = "0011" and so_r = '0') then
+				----- inject timeout here
 				vcso <= vcni;
 				so_r := '1';
+				sready := '0';
 				vcni_a <= '1';
 			end if;
 		end if;
@@ -105,11 +136,17 @@ begin
 		if(vcni_r = '0') then
 			vcni_a <= '0';
 		end if;
-		if(vcmo_a = '1') then
+		if(vcmo_a = '1' and mready = '1') then
 			mo_r := '0';
+			vcmo <= noc_transfer_none;
 		end if;
-		if(vcso_a = '1') then
+		if(vcso_a = '1' and sready = '1') then
 			so_r := '0';
+			vcso <= noc_transfer_none;
+		end if;
+		if(co_a = '1' and cready = '1') then
+			co_r <= '0';
+			co <= noc_transfer_none;
 		end if;
 		------------------------------------
 		vcso_r <= so_r;
@@ -118,77 +155,136 @@ begin
 end process vni_proc;
 
 vno_proc: process (clk, res)
-variable no_r, mo_r, so_r, rr : std_logic;
-variable mcmp, iocmp, tmp1, tmp2 : std_logic_vector(11 downto 0);
-variable pagenr : std_logic_vector(2 downto 0);
-variable index, sum : integer;
+variable no_r, rr, nready : std_logic;
+variable mcmp, iocmp, faddr, fmask : std_logic_vector(11 downto 0);
+variable pagenr, maskstart, cstate : integer;
+variable timer : integer;
+variable slvsave : std_logic_vector(31 downto 0);
+variable ntr_config : noc_transfer_reg;
 begin
 	if(res = '0') then
-		pagenr := "000";
 		mcmp := (others => '0');
 		iocmp := (others => '0');
-		tmp1 := (others => '0');
-		tmp2 := (others => '0');
-		index := 0;
-		sum := 0;
+		faddr := (others => '0');
+		fmask := (others => '0');
+		pagenr := 0;
+		maskstart := 0;
+		cstate := 0;
 		rr := '0';
 		no_r := '0';
-		mo_r := '0';
-		so_r := '0';
-		vcmo <= noc_transfer_none;
+		nready := '0';
 		vcmi_a <= '0';
-		vcmo <= noc_transfer_none;
 		vcsi_a <= '0';
-		vcso <= noc_transfer_none;
 		vcno_r <= '0';
 		vcno <= noc_transfer_none;
+		timer := 0;
+		slvsave := (others => '0');
+		ntr_config.len := "010";
+		ntr_config.addr := "0000";
+		ntr_config.flit(0) := x"2F002E00";
+		ntr_config.flit(1) := x"00000000";
+		ntr_config.flit(2) := x"00000000";
+		ntr_config.flit(3) := x"00000000";
+		ntr_config.flit(4) := x"00000000";
 	elsif(clk'event and clk = '1') then
 		if(rr = '1' and vcsi_r = '0') then
 			rr := '0';
 		end if;
-		if(vcmi_r = '1' and no_r = '0' and rr = '0') then
-			rr := '1';
-			vcno <= vcmi;
-			no_r := '1';
-			vcmi_a <= '1';
+		if(no_r = '1') then 
+			---- vcno_a reset (1/2)
+			nready := '1';
+		end if;
+		if(datastore(0)(23) = '1' and datastore(0)(22) = '0') then
+			if(no_r = '0') then
+				if(cstate = 0) then
+					vcno <= ntr_config;
+					vcno.flit(0)(23 downto 20) <= conv_std_logic_vector(cstate,4);
+					vcno.flit(1) <= datastore(1);
+					no_r := '1';
+					nready := '0';
+					cstate := 1;
+				elsif(cstate = 1) then
+					vcno <= ntr_config;
+					vcno.flit(0)(23 downto 20) <= conv_std_logic_vector(cstate,4);
+					vcno.flit(0)(7 downto 5) <= "001";
+					vcno.flit(1) <= datastore(1);
+					vcno.flit(1)(9 downto 0) <= conv_std_logic_vector(conv_integer(datastore(1)(9 downto 0))+4,10);
+					no_r := '1';
+					nready := '0';
+					cstate := 2;
+				elsif(cstate = 2) then
+					vcno <= ntr_config;
+					vcno.flit(0)(23 downto 20) <= conv_std_logic_vector(cstate,4);
+					vcno.flit(0)(7 downto 5) <= "001";
+					vcno.flit(1) <= datastore(1);
+					vcno.flit(1)(9 downto 0) <= conv_std_logic_vector(conv_integer(datastore(1)(9 downto 0))+20,10);
+					no_r := '1';
+					nready := '0';
+					cstate := 3;
+				elsif(cstate = 3) then
+					vcno <= ntr_config;
+					vcno.flit(0)(23 downto 20) <= conv_std_logic_vector(cstate,4);
+					vcno.flit(0)(7 downto 5) <= "001";
+					vcno.flit(1) <= datastore(1);
+					vcno.flit(1)(9 downto 0) <= conv_std_logic_vector(conv_integer(datastore(1)(9 downto 0))+36,10);
+					no_r := '1';
+					nready := '0';
+					cstate := 4;
+				elsif(cstate = 4) then
+					vcno <= ntr_config;
+					vcno.flit(0)(23 downto 20) <= conv_std_logic_vector(cstate,4);
+					vcno.flit(0)(7 downto 5) <= "001";
+					vcno.flit(1) <= datastore(1);
+					vcno.flit(1)(9 downto 0) <= conv_std_logic_vector(conv_integer(datastore(1)(9 downto 0))+52,10);
+					no_r := '1';
+					nready := '0';
+					cstate := 5;
+				end if;
+			end if;
+		elsif(vcmi_r = '1' and no_r = '0' and rr = '0') then
+				rr := '1';
+				vcno <= vcmi;
+				no_r := '1';
+				vcmi_a <= '1';
 		elsif(vcsi_r = '1' and no_r = '0') then
-			index := 0;
-			sum := 0;
-			tmp1 := vcsi.flit(1)(31 downto 20);
+			pagenr := 0;
+			maskstart := 0;
+			faddr := vcsi.flit(1)(31 downto 20);
 			---- get compare value which page table Memory/IO ----
-			tmp2 := conv_std_logic_vector(iomask,12);
+			fmask := conv_std_logic_vector(iomask,12);
 			for I in 0 to 11 loop
-				iocmp(I) := tmp1(I) and tmp2(I);
+				iocmp(I) := faddr(I) and fmask(I);
 			end loop;
-			tmp2 := conv_std_logic_vector(memmask,12);
+			fmask := conv_std_logic_vector(memmask,12);
 			for I in 0 to 11 loop
-				mcmp(I) := tmp1(I) and tmp2(I);
+				mcmp(I) := faddr(I) and fmask(I);
 			end loop;
 			---- find out value which page table Memory/IO ----
-			if(mcmp = conv_std_logic_vector(membar,12)) then
-				for I in 20 to 31 loop
-					if(datastore(0)(I) = '1') then
-						sum := sum + 1;
+			if(iocmp = conv_std_logic_vector(iobar,12)) then
+				for I in 8 to 19 loop
+					---- Gaisler GRIP 12bit APB Range set in ahbctrl
+					if(datastore(pagebase)(I) = '1' and maskstart = 0) then
+						maskstart := I;
 					end if;
 				end loop;
-				if(sum /= 0) then
-					--index := conv_integer(vcsi.flit(1)(index+2 downto index));
+				if(maskstart = 0) then
+					maskstart := 20;
+				end if;
+				pagenr := conv_integer(vcsi.flit(1)(maskstart-1 downto maskstart-4));
+				if(datastore(pagenr+pagebase+1) /= x"ffffffff") then
 					vcno <= vcsi;
-					for I in 31 downto 20 loop
+					for I in 31 downto 8 loop
 						-- (page entry and not page mask) or (page mask and haddr)
-						vcno.flit(1)(I) <= (datastore(1)(I) and datastore(0)(I)) or (not datastore(0)(I) and vcsi.flit(1)(I));
+						vcno.flit(1)(I) <= (datastore(pagenr+9)(I) and datastore(0)(I)) or (not datastore(0)(I) and vcsi.flit(1)(I));
 					end loop;
 					no_r := '1';
 				else
-					
+					---- error handling; page non existent
 				end if;
 				vcsi_a <= '1';
-			elsif(iocmp = conv_std_logic_vector(iobar,12)) then
+			elsif(mcmp = conv_std_logic_vector(membar,12)) then
+				---- not really implemented
 				vcno <= vcsi;
-				for I in 31 downto 8 loop
-					-- (page entry and not page mask) or (page mask and haddr)
-					vcno.flit(1)(I) <= (datastore(10)(I) and datastore(9)(I)) or (not datastore(9)(I) and vcsi.flit(1)(I)); 
-				end loop;
 				no_r := '1';
 				vcsi_a <= '1';
 			else
@@ -197,7 +293,8 @@ begin
 			end if;
 		end if;
 		---------------------------------
-		if(vcno_a = '1') then
+		if(vcno_a = '1' and nready = '1') then
+			---- vcno_a reset (2/2)
 			no_r := '0';
 		end if;
 		---------------------------------
@@ -220,6 +317,7 @@ variable bstate : integer range 0 to 1; -- burst status
 variable vaddr : std_logic_vector(7 downto 0);
 variable vincr : integer;
 variable vwrite : std_logic;
+variable loadstate : std_logic_vector(4 downto 0);
 begin
 	if(res = '0') then
 		ahbso <= ahbs_none;
@@ -229,7 +327,47 @@ begin
 		vincr := 0;
 		vwrite := '0';
 		datastore <= (others => (others => '0'));
+		co_a <= '0';
+		loadstate := (others => '0');
 	elsif(clk'event and clk = '1') then
+		---- Remote Input --------------------------------------------------
+		if(co_r = '1') then
+			if(co.flit(0)(23 downto 20) = "0000") then
+				datastore(pagebase) <= co.flit(1);
+				loadstate(0) := '1';
+			elsif(co.flit(0)(23 downto 20) = "0001") then
+				datastore(pagebase+1) <= co.flit(1);
+				datastore(pagebase+2) <= co.flit(2);
+				datastore(pagebase+3) <= co.flit(3);
+				datastore(pagebase+4) <= co.flit(4);
+				loadstate(1) := '1';
+			elsif(co.flit(0)(23 downto 20) = "0010") then
+				datastore(pagebase+5) <= co.flit(1);
+				datastore(pagebase+6) <= co.flit(2);
+				datastore(pagebase+7) <= co.flit(3);
+				datastore(pagebase+8) <= co.flit(4);
+				loadstate(2) := '1';
+			elsif(co.flit(0)(23 downto 20) = "0011") then
+				datastore(pagebase+9) <= co.flit(1);
+				datastore(pagebase+10) <= co.flit(2);
+				datastore(pagebase+11) <= co.flit(3);
+				datastore(pagebase+12) <= co.flit(4);
+				loadstate(3) := '1';
+			elsif(co.flit(0)(23 downto 20) = "0100") then
+				datastore(pagebase+13) <= co.flit(1);
+				datastore(pagebase+14) <= co.flit(2);
+				datastore(pagebase+15) <= co.flit(3);
+				datastore(pagebase+16) <= co.flit(4);
+				loadstate(4) := '1';
+			end if;
+			co_a <= '1';
+		else
+			co_a <= '0';
+		end if;
+		if(loadstate(0) = '1' and loadstate(1) = '1' and loadstate(2) = '1' and loadstate(3) = '1' and loadstate(4) = '1') then
+			datastore(0)(22) <= '1';
+			loadstate := (others => '0');
+		end if;
 		---- AHB -----------------------------------------------------------
 		rslv := ahbsi;
 		if(rslv.hsel(hindex) = '1') then
