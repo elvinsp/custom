@@ -87,6 +87,7 @@ component vcslv is
 				 ioaddr : integer range 0 to 16 := 16);
     port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;
+			  acwr : in std_logic;
 			  requ_ready : out std_logic;
 			  requ_ack : in std_logic;
 			  requ : out noc_transfer_reg;

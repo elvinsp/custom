@@ -78,8 +78,8 @@ BEGIN
 		generic map(hindex => 0)
 		port map(rstn, clkm, mst0_rx_ready, mst0_rx_ack, mst0_rx, mst0_tx_ready, mst0_tx_ack, mst0_tx, ahb0mi, ahb0mo(0));
 	leon_slv0: vcslv
-		generic map(hindex => 0, membar => 16#600#)
-		port map(rstn, clkm, slv_tx_ready, slv_tx_ack, slv_tx, slv_rx_ready, slv_rx_ack, slv_rx, ahb0si, ahb0so(0));
+		generic map(hindex => 0, membar => 16#500#)
+		port map(rstn, clkm, '0', slv_tx_ready, slv_tx_ack, slv_tx, slv_rx_ready, slv_rx_ack, slv_rx, ahb0si, ahb0so(0));
 	
 	io_ahb1 : ahbctrl       -- AHB arbiter/multiplexer
 				generic map (defmast => 0, split => 1, 
@@ -134,7 +134,7 @@ BEGIN
 		mst0_rx.flit(0)(7 downto 5) <= "001"; -- burst
 		mst0_rx.flit(0)(11 downto 8) <= "1110"; -- hprot
 		mst0_rx.flit(0)(31 downto 28) <= "0010";
-		mst0_rx.flit(1) <= x"30000014";
+		mst0_rx.flit(1) <= x"50000014";
 		mst0_rx.flit(2) <= x"12345678";
 		mst0_rx.flit(3) <= x"9abcdef0";
 		mst0_rx.flit(4) <= x"dead0000";
@@ -143,7 +143,7 @@ BEGIN
 		mst0_rx_ready <= '1';
 		wait until mst0_rx_ack = '1';
 		wait until clkm'event and clkm = '1';
-		mst0_rx <= noc_transfer_none;
+		--mst0_rx <= noc_transfer_none;
 		mst0_rx_ready <= '0';
 		wait until clkm'event and clkm = '1';
 		------------------------------------------
@@ -155,7 +155,7 @@ BEGIN
 		mst0_rx.flit(0)(7 downto 5) <= "000";
 		mst0_rx.flit(0)(11 downto 8) <= "1110";
 		mst0_rx.flit(0)(31 downto 28) <= "0010";
-		mst0_rx.flit(1) <= x"60000010";
+		mst0_rx.flit(1) <= x"50000010";
 		mst0_rx.flit(2) <= x"11111111";
 		mst0_rx.flit(3) <= x"22222222";
 		mst0_rx.flit(4) <= x"44444444";
@@ -163,7 +163,7 @@ BEGIN
 		wait until clkm'event and clkm = '1';
 		wait until mst0_rx_ack = '1';
 		wait until clkm'event and clkm = '1';
-		mst0_rx <= noc_transfer_none;
+		--mst0_rx <= noc_transfer_none;
 		mst0_rx_ready <= '0';
 		wait until clkm'event and clkm = '1';
 		------------------------------------------
@@ -175,7 +175,7 @@ BEGIN
 		mst0_rx.flit(0)(7 downto 5) <= "001";
 		mst0_rx.flit(0)(11 downto 8) <= "1110";
 		mst0_rx.flit(0)(31 downto 28) <= "0010";
-		mst0_rx.flit(1) <= x"60000010";
+		mst0_rx.flit(1) <= x"50000010";
 		mst0_rx.flit(2) <= x"11111111";
 		mst0_rx.flit(3) <= x"22222222";
 		mst0_rx.flit(4) <= x"44444444";
@@ -183,7 +183,7 @@ BEGIN
 		wait until clkm'event and clkm = '1';
 		wait until mst0_rx_ack = '1';
 		wait until clkm'event and clkm = '1';
-		mst0_rx <= noc_transfer_none;
+		--mst0_rx <= noc_transfer_none;
 		mst0_rx_ready <= '0';
 		wait until clkm'event and clkm = '1';
 		------------------------------------------
@@ -195,7 +195,7 @@ BEGIN
 		mst0_rx.flit(0)(7 downto 5) <= "000";
 		mst0_rx.flit(0)(11 downto 8) <= "1110";
 		mst0_rx.flit(0)(31 downto 28) <= "0010";
-		mst0_rx.flit(1) <= x"60000010";
+		mst0_rx.flit(1) <= x"50000010";
 		mst0_rx.flit(2) <= x"00000000";
 		mst0_rx.flit(3) <= x"00000000";
 		mst0_rx.flit(4) <= x"00000000";
@@ -203,7 +203,7 @@ BEGIN
 		wait until clkm'event and clkm = '1';
 		wait until mst0_rx_ack = '1';
 		wait until clkm'event and clkm = '1';
-		mst0_rx <= noc_transfer_none;
+		--mst0_rx <= noc_transfer_none;
 		mst0_rx_ready <= '0';
 		wait until clkm'event and clkm = '1';
 		------------------------------------------

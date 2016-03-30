@@ -45,7 +45,7 @@ entity vcslv is
 				 ioaddr : integer range 0 to 16 := 16);
     Port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;
-			  wrack : in std_logic;
+			  acwr : in std_logic;
 			  requ_ready : out std_logic;
 			  requ_ack : in std_logic;
 			  requ : out noc_transfer_reg;
@@ -103,7 +103,7 @@ begin
 		-- TX Ready reset (1/2) --
 		if(requ_ack = '1') then 
 			tx_ready := '0';
-			requ <= noc_transfer_none;
+			--requ <= noc_transfer_none;
 		end if;
 		---- AHB -----------------------------------------------------------
 		rslv := ahbsi;
@@ -122,8 +122,8 @@ begin
 					end if;
 					---- HTRANS: NONSEQ ----
 					if(rslv.htrans = "10") then
-						-- check if incoming AHB request is an old one which can be served (valid length; ahb_response_header; split id)
-						if(conv_integer(noc_rx_reg.len) > 1 and noc_rx_reg.flit(0)(31 downto 28) = "0011" and rslv.hmaster = noc_rx_reg.flit(0)(27 downto 24)) then
+						-- check if incoming AHB response is an old one which can be served (valid length; ahb_response_header; split id)
+						if(conv_integer(noc_rx_reg.len) > 1 and rslv.hmaster = noc_rx_reg.flit(0)(27 downto 24)) then
 							-- it can only be a read request
 							if(rslv.hwrite = '0') then -- redo if write confirm
 								if(noc_rx_reg.flit(1) = x"ffffffff" and noc_rx_reg.flit(0)(1 downto 0) = "01") then
@@ -142,6 +142,28 @@ begin
 										bstate := 1; -- go into burst mode
 									end if;
 								end if;
+							elsif(noc_rx_reg.flit(0)(2) = '1' and rslv.haddr = noc_rx_reg.flit(1)) then
+								if(noc_rx_reg.flit(0)(1 downto 0) = "00") then
+									tslv.hresp := "00";
+									fresp := '0';
+									noc_rx_reg := noc_transfer_none;
+									---- start new transmission for next after burst
+									if(rslv.hburst /= "000") then
+										bstate := 1;
+										noc_tx_reg.flit(0)(31 downto 28) := "0010"; ---- ahb_request_header
+										noc_tx_reg.flit(0)(27 downto 24) := rslv.hmaster;
+										noc_tx_reg.flit(0)(15) := rslv.hwrite;
+										noc_tx_reg.flit(0)(14 downto 12) := rslv.hsize;
+										noc_tx_reg.flit(0)(7 downto 5) := "000"; -- SINGLE
+										noc_tx_reg.flit(0)(11 downto 8) := rslv.hprot;
+										if(acwr = '0') then
+											noc_tx_reg.flit(0)(2) := '1';
+										end if;
+									end if;
+								else
+									tslv.hresp := "01";
+									tslv.hready := '0';
+								end if;
 							else
 								noc_rx_reg := noc_transfer_none;
 								tslv.hresp := "01";
@@ -155,11 +177,12 @@ begin
 							-- new Burst has begun, finish up old Burst and start new one
 							if(bstate = 1) then
 								if(conv_integer(noc_tx_reg.len) > 1 and noc_tx_reg.flit(0)(15) = '1') then
+								--------------------------------------------------------------------------------------acwr
 									noc_tx_reg.flit(flit_index) := rslv.hwdata(31 downto 0);
 									flit_index := flit_index + 1; ---- increase after use and before setting length (index starts at 0, length starts at 1)
 									noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
 									if(tx_flag = '0') then
-										noc_tx_reg.addr := conv_std_logic_vector(1,4); ----- Debug
+										-- send off old ahb request and start new one
 										requ <= noc_tx_reg;
 										tx_ready := '1';
 										tx_flag := '1';
@@ -181,13 +204,12 @@ begin
 										noc_tx_reg.len := conv_std_logic_vector(2,3);
 										noc_tx_reg.addr := conv_std_logic_vector(0,4); -------------------------------------- Replace Addr!!
 									else
+										--- don't start new burst until old one is send off
 										split_reg(conv_integer(swrite)) := rslv.hmaster;
 										swrite := swrite + '1';
 										tslv.hresp := "11";
 										tslv.hready := '0';
 										bstate := 0;
-										------------------------------------------------------------------------ SPLIT Queue !!
-
 									end if;
 									---------------------------------- deal with new Burst !!!!!!
 								end if;
@@ -210,7 +232,6 @@ begin
 									noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
 									noc_tx_reg.addr := conv_std_logic_vector(0,4); -------------------------------------- Replace Addr!!
 									if(tx_flag = '0') then
-										noc_tx_reg.addr := conv_std_logic_vector(2,4); ----- Debug
 										requ <= noc_tx_reg;
 										tx_ready := '1';
 										tx_flag := '1';
@@ -224,7 +245,9 @@ begin
 									------------------------------------------------------------------------ SPLIT Queue !!
 								else
 									noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
-									if(wrack = '0') then
+									if(acwr = '0') then
+										noc_tx_reg.flit(0)(2) := '1';
+										noc_tx_reg.flit(0)(7 downto 5) := "000";
 										tslv.hresp := "11";
 										tslv.hready := '0';
 									end if;
@@ -232,12 +255,11 @@ begin
 								bstate := 1; -- new burst started
 							-- (bstate) Busy because a still pending Request
 							else
-								split_reg(conv_integer(swrite)) := rslv.hmaster;
+								split_reg(conv_integer(swrite)) := rslv.hmaster; -- setting SPLIT-Queue
 								swrite := swrite + '1';
 								tslv.hresp := "11";
 								tslv.hready := '0';
 								bstate := 0;
-								------------------------------------------------------------------------ SPLIT Queue !!
 							end if;
 						end if;
 					---- HTRANS: SEQ ----
@@ -246,43 +268,49 @@ begin
 						if(bstate = 1) then
 							-- continue caching HWDATA
 							if(rslv.hwrite = '1') then ---- insert: and write_ack = '1' ---------------------------------- !!
-								if(flit_index < 4) then
-									noc_tx_reg.flit(flit_index) := rslv.hwdata(31 downto 0);
-									flit_index := flit_index + 1; ---- increase after use and before setting length (index starts at 0, length starts at 1)
-								elsif(flit_index = 4) then
-									-- full packet therefore transmit it
-									noc_tx_reg.len := conv_std_logic_vector(5,3);
-									noc_tx_reg.addr := conv_std_logic_vector(0,4);
-									noc_tx_reg.flit(flit_index) := rslv.hwdata(31 downto 0);
-									if(tx_flag = '0') then
-										noc_tx_reg.addr := conv_std_logic_vector(3,4); ----- Debug
-										requ <= noc_tx_reg;
-										tx_ready := '1';
-										tx_flag := '1';
-										noc_tx_reg := noc_transfer_none;
-										noc_tx_reg.len := conv_std_logic_vector(2,3);
-										noc_tx_reg.addr := conv_std_logic_vector(0,4); ---------------------------------- Replace Addr!!
-										noc_tx_reg.flit(0)(31 downto 28) := "0010"; ---- ahb_request_header
-										noc_tx_reg.flit(0)(27 downto 24) := rslv.hmaster;
-										noc_tx_reg.flit(0)(15) := rslv.hwrite;
-										noc_tx_reg.flit(0)(14 downto 12) := rslv.hsize;
-										if(rslv.hburst /= "000") then
-											noc_tx_reg.flit(0)(7 downto 5) := "001"; -- INCR
+								if(acwr = '0') then
+									noc_tx_reg.flit(1) := rslv.haddr;
+									tslv.hresp := "11";
+									tslv.hready := '0';
+								else
+									if(flit_index < 4) then
+										noc_tx_reg.flit(flit_index) := rslv.hwdata(31 downto 0);
+										flit_index := flit_index + 1; ---- increase after use and before setting length (index starts at 0, length starts at 1)
+									elsif(flit_index = 4) then
+										-- full packet therefore transmit it
+										noc_tx_reg.len := conv_std_logic_vector(5,3);
+										noc_tx_reg.addr := conv_std_logic_vector(0,4);
+										noc_tx_reg.flit(flit_index) := rslv.hwdata(31 downto 0);
+										if(tx_flag = '0') then
+											noc_tx_reg.addr := conv_std_logic_vector(3,4); ----- Debug
+											requ <= noc_tx_reg;
+											tx_ready := '1';
+											tx_flag := '1';
+											noc_tx_reg := noc_transfer_none;
+											noc_tx_reg.len := conv_std_logic_vector(2,3);
+											noc_tx_reg.addr := conv_std_logic_vector(0,4); ---------------------------------- Replace Addr!!
+											noc_tx_reg.flit(0)(31 downto 28) := "0010"; ---- ahb_request_header
+											noc_tx_reg.flit(0)(27 downto 24) := rslv.hmaster;
+											noc_tx_reg.flit(0)(15) := rslv.hwrite;
+											noc_tx_reg.flit(0)(14 downto 12) := rslv.hsize;
+											if(rslv.hburst /= "000") then
+												noc_tx_reg.flit(0)(7 downto 5) := "001"; -- INCR
+											else
+												noc_tx_reg.flit(0)(7 downto 5) := "000"; -- SINGLE
+											end if;
+											noc_tx_reg.flit(0)(11 downto 8) := rslv.hprot;
+											noc_tx_reg.flit(1) := rslv.haddr;
+											flit_index := 2; ---- start new index at 2 (header and addr used)
 										else
-											noc_tx_reg.flit(0)(7 downto 5) := "000"; -- SINGLE
+											split_reg(conv_integer(swrite)) := rslv.hmaster;
+											swrite := swrite + '1';
+											tslv.hresp := "11";
+											tslv.hready := '0';
+											bstate := 0;
+											------------------------------------------------------------------------ SPLIT Queue !!
 										end if;
-										noc_tx_reg.flit(0)(11 downto 8) := rslv.hprot;
-										noc_tx_reg.flit(1) := rslv.haddr;
-										flit_index := 2; ---- start new index at 2 (header and addr used)
-									else
-										split_reg(conv_integer(swrite)) := rslv.hmaster;
-										swrite := swrite + '1';
-										tslv.hresp := "11";
-										tslv.hready := '0';
-										bstate := 0;
-										------------------------------------------------------------------------ SPLIT Queue !!
+										---- flit_index?
 									end if;
-									---- flit_index?
 								end if;
 							-- read
 							else
@@ -335,13 +363,22 @@ begin
 				end if;
 			---- ERROR/SPLIT Handling(2/3) -----------------------------------------
 			else
-				--if(tx_ready = '0') then
-					tslv.hready := '1';
-				--end if;
+				tslv.hready := '1';
+				if(acwr = '0') then
+					noc_tx_reg.flit(2) := rslv.hwdata;
+					noc_tx_reg.len := conv_std_logic_vector(3,3);
+					-------------------------------------------!!!
+					if(tx_flag = '0') then
+						requ <= noc_tx_reg;
+						tx_ready := '1';
+						tx_flag := '1';
+						noc_tx_reg := noc_transfer_none;
+					end if;
+				end if;
 			end if;
 		---- HSEL inactive ----
 		else
-			--- handle last write ---------------------------------------------------------------------???
+			--- handle last write ---------------------------------------------------------------------acwr
 			if(tslv.hresp /= "00" and tslv.hready = '1') then
 				tslv := ahbs_none;
 			else
@@ -368,13 +405,14 @@ begin
 		if(resp_ready = '1' and fresp = '0') then
 			resp_ack <= '1';
 			fresp := '1';
-			if(conv_integer(resp.len) > 1) then
+			if(conv_integer(resp.len) > 1 and resp.flit(0)(31 downto 28) = "0011") then
 				noc_rx_reg := resp;
-				split := conv_integer(noc_rx_reg.flit(0)(27 downto 24)); ------------------------------ SPLIT Queue !!
+				split := conv_integer(noc_rx_reg.flit(0)(27 downto 24));
 			else
 				fresp := '0';
 				split := 16;
 			end if;
+		---- call masters which where splitted because vcslv was busy -------
 		elsif(tx_ready = '0' and ((swrite(4) = '0' and conv_integer(sread) < conv_integer(swrite(3 downto 0))) 
 												or (swrite(4) = '1' and conv_integer(sread) >= conv_integer(swrite(3 downto 0))))) then
 			split := conv_integer(split_reg(conv_integer(sread)));
