@@ -38,11 +38,11 @@ entity vcont is
 	 Generic ( mindex : integer; -- master index
 				sindex : integer;   -- slave index
 				cindex : integer;   -- config index (slave)
-				membar : integer := 16#600#;
+				memaddr : integer := 16#B00#;
 				memmask : integer := 16#fff#;
-				iobar : integer := 16#B00#;
+				ioaddr : integer := 16#C00#;
 				iomask : integer := 16#fff#;
-				cbar : integer := 16#B08#;
+				caddr : integer := 16#D0A#;
 				cmask : integer := 16#fff#);
     Port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;
@@ -71,10 +71,10 @@ begin
 		generic map(hindex => mindex)
 		port map(res, clk, vccm_ready, vccm_ack, vccm, vcmc_ready, vcmc_ack, vcmc, ahbmi, ahbmo);
 	vcont_slv: vcslv
-		generic map(hindex => sindex, mindex => mindex, membar => membar, memmask => memmask, iobar => iobar, iomask => iomask)
-		port map(res, clk, vcsc_ready, vcsc_ack, vcsc, vccs_ready, vccs_ack, vccs, ahbsi, ahbso);
+		generic map(hindex => sindex, mindex => mindex, memaddr => memaddr, memmask => memmask, ioaddr => ioaddr, iomask => iomask)
+		port map(res, clk, '0', vcsc_ready, vcsc_ack, vcsc, vccs_ready, vccs_ack, vccs, ahbsi, ahbso);
 	vcont_vcctrl : vcctrl
-		generic map( hindex => cindex, cbar => cbar, cmask => cmask, membar => membar, memmask => memmask, iobar => iobar, iomask => iomask)
+		generic map( hindex => cindex, caddr => caddr, cmask => cmask, memaddr => memaddr, memmask => memmask, ioaddr => ioaddr, iomask => iomask)
 		port map( res, clk, ahbsi, ahbco, vcmc_ready, vcmc_ack, vcmc, vccm_ready, vccm_ack, vccm, vcsc_ready, vcsc_ack, vcsc, vccs_ready, vccs_ack, vccs, vcni_r, vcni_a, vcni, vcno_r, vcno_a, vcno);
 		
 end Behavioral;

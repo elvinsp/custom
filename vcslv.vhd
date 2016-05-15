@@ -36,13 +36,11 @@ use gaisler.custom.all;
 
 entity vcslv is
     generic( hindex : integer := 0;
-				 membar : integer := 16#600#;
+				 memaddr : integer := 16#600#;
 				 memmask : integer := 16#fff#;
-				 iobar : integer := 16#800#;
+				 ioaddr : integer := 16#800#;
 				 iomask : integer := 16#fff#;
-				 mindex : integer := 16;
-				 memaddr : integer range 0 to 16 := 16;
-				 ioaddr : integer range 0 to 16 := 16);
+				 mindex : integer := 16);
     Port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;
 			  acwr : in std_logic;
@@ -59,8 +57,8 @@ end vcslv;
 architecture Behavioral of vcslv is
 constant hconfig : ahb_config_type := (
   0 => ahb_device_reg ( 16#01#, 16#01B#, 0, 0, 0), --ahb_device_reg (VENDOR_EXAMPLE, EXAMPLE_AHBRAM, 0, 0, 0)
-  4 => ahb_membar(membar, '0', '0', memmask), -- ahb_membar(memaddr, '0', '0', memmask), others => X"00000000");
-  5 => ahb_membar(iobar, '0', '0', iomask),
+  4 => ahb_membar(ioaddr, '0', '0', iomask), -- ahb_memaddr(memaddr, '0', '0', memmask), others => X"00000000");
+  --5 => ahb_membar(memaddr, '0', '0', memmask),
   --5 => ahb_iobar(16#500#, 16#f00#),
   others => zero32);
   
@@ -76,7 +74,7 @@ variable noc_rx_reg : noc_transfer_reg;
 variable flit_index : integer;
 variable bstate : integer range 0 to 1; -- burst status
 variable split : integer range 0 to 16;
-variable fresp, tx_ready, tx_flag : std_logic;
+variable fresp, tx_r, tready : std_logic;
 variable split_reg : reg16;
 variable sread : std_logic_vector(3 downto 0);
 variable swrite : std_logic_vector(4 downto 0);
@@ -92,8 +90,8 @@ begin
 		requ <= noc_transfer_none;
 		resp_ack <= '0';
 		fresp := '0';
-		tx_ready := '0'; -- transmit pending
-		tx_flag := '0';
+		tx_r := '0'; -- transmit pending
+		tready := '0';
 		bstate := 0; -- no bursts
 		split := 16;
 		split_reg := (others => (others => '0'));
@@ -102,7 +100,7 @@ begin
 	elsif(clk'event and clk = '1') then
 		-- TX Ready reset (1/2) --
 		if(requ_ack = '1') then 
-			tx_ready := '0';
+			tx_r := '0';
 			--requ <= noc_transfer_none;
 		end if;
 		---- AHB -----------------------------------------------------------
@@ -142,14 +140,16 @@ begin
 										bstate := 1; -- go into burst mode
 									end if;
 								end if;
-							elsif(noc_rx_reg.flit(0)(2) = '1' and rslv.haddr = noc_rx_reg.flit(1)) then
-								if(noc_rx_reg.flit(0)(1 downto 0) = "00") then
+							elsif(noc_rx_reg.flit(0)(2) = '1' and noc_rx_reg.flit(0)(1 downto 0) = "00") then
+								--if(noc_rx_reg.flit(0)(1 downto 0) = "00") then -- dead code covered by elsif above
 									tslv.hresp := "00";
 									fresp := '0';
 									noc_rx_reg := noc_transfer_none;
 									---- start new transmission for next after burst
 									if(rslv.hburst /= "000") then
+										flit_index := 1; ---- start new index at 2 (header and addr already used)
 										bstate := 1;
+										noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
 										noc_tx_reg.flit(0)(31 downto 28) := "0010"; ---- ahb_request_header
 										noc_tx_reg.flit(0)(27 downto 24) := rslv.hmaster;
 										noc_tx_reg.flit(0)(15) := rslv.hwrite;
@@ -159,15 +159,19 @@ begin
 										if(acwr = '0') then
 											noc_tx_reg.flit(0)(2) := '1';
 										end if;
+										flit_index := flit_index + 1;
 									end if;
-								else
-									tslv.hresp := "01";
-									tslv.hready := '0';
-								end if;
+								--else -- unused code
+								--	tslv.hresp := "01";
+								--	tslv.hready := '0';
+								--end if;
+								-- line below does the thing
 							else
+							-- internal error of slave
 								noc_rx_reg := noc_transfer_none;
 								tslv.hresp := "01";
 								tslv.hready := '0';
+								fresp := '0';
 								bstate := 0;
 							end if;
 							tslv.hsplit := (others => '0');
@@ -181,11 +185,11 @@ begin
 									noc_tx_reg.flit(flit_index) := rslv.hwdata(31 downto 0);
 									flit_index := flit_index + 1; ---- increase after use and before setting length (index starts at 0, length starts at 1)
 									noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
-									if(tx_flag = '0') then
+									if(tready = '0') then
 										-- send off old ahb request and start new one
 										requ <= noc_tx_reg;
-										tx_ready := '1';
-										tx_flag := '1';
+										tx_r := '1';
+										tready := '1';
 										noc_tx_reg := noc_transfer_none;
 										tslv.hresp := "00";
 										---- save new Request ----
@@ -231,10 +235,10 @@ begin
 									-- Doesn't matter if hburst INCR/WARP/SINGLE all will be handled on remote interface
 									noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
 									noc_tx_reg.addr := conv_std_logic_vector(0,4); -------------------------------------- Replace Addr!!
-									if(tx_flag = '0') then
+									if(tready = '0') then
 										requ <= noc_tx_reg;
-										tx_ready := '1';
-										tx_flag := '1';
+										tx_r := '1';
+										tready := '1';
 										noc_tx_reg := noc_transfer_none;
 									end if;
 									--split_reg(conv_integer(swrite)) := rslv.hmaster;
@@ -270,6 +274,8 @@ begin
 							if(rslv.hwrite = '1') then ---- insert: and write_ack = '1' ---------------------------------- !!
 								if(acwr = '0') then
 									noc_tx_reg.flit(1) := rslv.haddr;
+									noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
+									--flit_index := flit_index + 1;
 									tslv.hresp := "11";
 									tslv.hready := '0';
 								else
@@ -281,11 +287,11 @@ begin
 										noc_tx_reg.len := conv_std_logic_vector(5,3);
 										noc_tx_reg.addr := conv_std_logic_vector(0,4);
 										noc_tx_reg.flit(flit_index) := rslv.hwdata(31 downto 0);
-										if(tx_flag = '0') then
+										if(tready = '0') then
 											noc_tx_reg.addr := conv_std_logic_vector(3,4); ----- Debug
 											requ <= noc_tx_reg;
-											tx_ready := '1';
-											tx_flag := '1';
+											tx_r := '1';
+											tready := '1';
 											noc_tx_reg := noc_transfer_none;
 											noc_tx_reg.len := conv_std_logic_vector(2,3);
 											noc_tx_reg.addr := conv_std_logic_vector(0,4); ---------------------------------- Replace Addr!!
@@ -346,6 +352,9 @@ begin
 					elsif(rslv.htrans = "00") then
 						-- Burst complete or Error handling complete?
 						flit_index := 2;
+						bstate := 0;
+					else
+						-- nothing
 					end if;
 					---- End of HTRANS ----
 				---- Error due to Bridge Looping (mindex)----
@@ -364,14 +373,14 @@ begin
 			---- ERROR/SPLIT Handling(2/3) -----------------------------------------
 			else
 				tslv.hready := '1';
-				if(acwr = '0') then
-					noc_tx_reg.flit(2) := rslv.hwdata;
+				if(acwr = '0' and conv_integer(noc_tx_reg.len) > 1) then
+					noc_tx_reg.flit(2) := rslv.hwdata(31 downto 0);
 					noc_tx_reg.len := conv_std_logic_vector(3,3);
 					-------------------------------------------!!!
-					if(tx_flag = '0') then
+					if(tready = '0') then
 						requ <= noc_tx_reg;
-						tx_ready := '1';
-						tx_flag := '1';
+						tx_r := '1';
+						tready := '1';
 						noc_tx_reg := noc_transfer_none;
 					end if;
 				end if;
@@ -391,11 +400,10 @@ begin
 				noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
 			end if;
 			---- send last AHB Request
-			if(conv_integer(noc_tx_reg.len) > 1 and tx_flag = '0') then
-				noc_tx_reg.addr := conv_std_logic_vector(4,4); ----- Debug
+			if(conv_integer(noc_tx_reg.len) > 1 and tready = '0') then
 				requ <= noc_tx_reg; 
-				tx_ready := '1';
-				tx_flag := '1';
+				tx_r := '1';
+				tready := '1';
 				noc_tx_reg := noc_transfer_none;
 				flit_index := 2;
 			end if;
@@ -413,7 +421,7 @@ begin
 				split := 16;
 			end if;
 		---- call masters which where splitted because vcslv was busy -------
-		elsif(tx_ready = '0' and ((swrite(4) = '0' and conv_integer(sread) < conv_integer(swrite(3 downto 0))) 
+		elsif(tx_r = '0' and ((swrite(4) = '0' and conv_integer(sread) < conv_integer(swrite(3 downto 0))) 
 												or (swrite(4) = '1' and conv_integer(sread) >= conv_integer(swrite(3 downto 0))))) then
 			split := conv_integer(split_reg(conv_integer(sread)));
 		end if;
@@ -421,11 +429,11 @@ begin
 		if(split < 16) then
 			tslv.hsplit(split) := '1';
 		else
-			tslv.hsplit := x"0000";
+			tslv.hsplit := x"0000";---??
 		end if;
 		---- TX Ready reset (2/2) --
-		if(requ_ack = '1' and tx_ready = '0') then 
-			tx_flag := '0';
+		if(requ_ack = '1' and tx_r = '0') then 
+			tready := '0';
 		end if;
 		---- Reset RX ACK ----
 		if(resp_ready = '0') then 
@@ -433,7 +441,7 @@ begin
 		end if;
 		----------------------------------------------------------------------------
 		ahbso <= tslv;
-		requ_ready <= tx_ready;
+		requ_ready <= tx_r;
 	end if;
 	---- Gaisler AHB Plug&Play status ---------------------------------------------
 	ahbso.hconfig <= hconfig;

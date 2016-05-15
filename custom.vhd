@@ -40,7 +40,7 @@ type flits is array (0 to 4) of std_logic_vector(31 downto 0);
 type noc_transfer_reg is record
 	len : std_logic_vector(2 downto 0);
 	addr : std_logic_vector(3 downto 0);
-	flit :  flits;
+	flit : flits;
 end record;
 
 --type noc_flit_ahb is record
@@ -78,13 +78,11 @@ end component;
 
 component vcslv is
     generic( hindex : integer := 0;
-				 membar : integer := 16#600#;
+				 memaddr : integer := 16#600#;
 				 memmask : integer := 16#fff#;
-				 iobar : integer := 16#800#;
+				 ioaddr : integer := 16#800#;
 				 iomask : integer := 16#fff#;
-				 mindex : integer := 16;
-				 memaddr : integer range 0 to 16 := 16;
-				 ioaddr : integer range 0 to 16 := 16);
+				 mindex : integer := 16);
     port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;
 			  acwr : in std_logic;
@@ -100,11 +98,11 @@ end component;
 
 component vcctrl is
     generic( hindex : integer := 0;
-				 cbar : integer := 16#C00#;
+				 caddr : integer := 16#C00#;
 				 cmask : integer := 16#fff#;
-				 membar : integer := 16#600#;
+				 memaddr : integer := 16#600#;
 				 memmask : integer := 16#fff#;
-				 iobar : integer := 16#800#;
+				 ioaddr : integer := 16#800#;
 				 iomask : integer := 16#fff#);
     Port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;
@@ -134,11 +132,11 @@ component vcont is
 	 Generic ( mindex : integer;
 				sindex : integer;
 				cindex : integer;
-				membar : integer := 16#600#;
+				memaddr : integer := 16#600#;
 				memmask : integer := 16#ff0#;
-				iobar : integer := 16#B00#;
+				ioaddr : integer := 16#B00#;
 				iomask : integer := 16#ff8#;
-				cbar : integer := 16#B08#;
+				caddr : integer := 16#B08#;
 				cmask : integer := 16#fff#);
     Port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;
