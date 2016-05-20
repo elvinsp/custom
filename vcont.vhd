@@ -62,8 +62,9 @@ end vcont;
 architecture Behavioral of vcont is
 
 signal vcmc, vccm, vccs, vcsc : noc_transfer_reg := noc_transfer_none;
-signal vcmc_ready, vcmc_ack, vccm_ready, vccm_ack : std_logic := '0'; -- master out, master in
-signal vccs_ready, vccs_ack, vcsc_ready, vcsc_ack : std_logic := '0'; -- slave out, slave in
+signal vcmc_ready, vcmc_ack, vccm_ready, vccm_ack : std_logic; -- master out, master in
+signal vccs_ready, vccs_ack, vcsc_ready, vcsc_ack : std_logic; -- slave out, slave in
+signal acwr : std_logic;
 
 begin
 
@@ -72,10 +73,10 @@ begin
 		port map(res, clk, vccm_ready, vccm_ack, vccm, vcmc_ready, vcmc_ack, vcmc, ahbmi, ahbmo);
 	vcont_slv: vcslv
 		generic map(hindex => sindex, mindex => mindex, memaddr => memaddr, memmask => memmask, ioaddr => ioaddr, iomask => iomask)
-		port map(res, clk, '0', vcsc_ready, vcsc_ack, vcsc, vccs_ready, vccs_ack, vccs, ahbsi, ahbso);
+		port map(res, clk, acwr, vcsc_ready, vcsc_ack, vcsc, vccs_ready, vccs_ack, vccs, ahbsi, ahbso);
 	vcont_vcctrl : vcctrl
 		generic map( hindex => cindex, caddr => caddr, cmask => cmask, memaddr => memaddr, memmask => memmask, ioaddr => ioaddr, iomask => iomask)
-		port map( res, clk, ahbsi, ahbco, vcmc_ready, vcmc_ack, vcmc, vccm_ready, vccm_ack, vccm, vcsc_ready, vcsc_ack, vcsc, vccs_ready, vccs_ack, vccs, vcni_r, vcni_a, vcni, vcno_r, vcno_a, vcno);
+		port map( res, clk, acwr, ahbsi, ahbco, vcmc_ready, vcmc_ack, vcmc, vccm_ready, vccm_ack, vccm, vcsc_ready, vcsc_ack, vcsc, vccs_ready, vccs_ack, vccs, vcni_r, vcni_a, vcni, vcno_r, vcno_a, vcno);
 		
 end Behavioral;
 

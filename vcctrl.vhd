@@ -44,6 +44,7 @@ entity vcctrl is
 				 iomask : integer := 16#fff#);
     Port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;
+			  acwr : out std_logic;
 			  ahbsi : in ahb_slv_in_type;
 			  ahbso : out ahb_slv_out_type;
 			  vcmi_r : in std_logic; -- virtual controller master input ready
@@ -200,7 +201,8 @@ begin
 		if(eo_r = '1') then
 			eready := '1';
 		end if;
-		if(datastore(0)(23) = '1' and datastore(0)(22) = '0') then
+		if(datastore(0)(23) = '1' and datastore(0)(22) = '0') then -- datastore(0)(23) load; datastore(0)(22) load complete
+-- Page Table Load
 			if(no_r = '0') then
 				if(cstate = 0) then
 					vcno <= ntr_config;
@@ -243,12 +245,18 @@ begin
 				end if;
 				vcno.addr <= conv_std_logic_vector(5,4);
 			end if;
-		elsif(datastore(0)(22 downto 21) = "11") then
+			-- no_r --
+		elsif(datastore(0)(22 downto 21) = "11") then -- datastore(0)(21) remote config
 			if(no_r = '0') then
-				-- Remote Config Ack
+-- Remote Config Ack
+				vcno <= ntr_remote;
+				vcno.flit(0)(31 downto 28) <= "0101";
+				vcno.addr <= datastore(0)(19 downto 16);
+				vcno.len <= "001";
+				no_r := '1';
 			end if;
-		elsif(datastore(4)(31) = '1' and datastore(4)(30) = '0') then
-			-- Remote Config
+		elsif(datastore(4)(31) = '1') then -- send remote config
+-- Remote Config
 			if(no_r = '0') then
 				vcno <= ntr_remote;
 				vcno.addr <= datastore(4)(27 downto 24);
@@ -256,11 +264,13 @@ begin
 				no_r := '1';
 			end if;
 		elsif(vcmi_r = '1' and no_r = '0' and rr = '0') then
-				rr := '1';
-				vcno <= vcmi;
-				no_r := '1';
-				vcmi_a <= '1';
+-- Master to Network
+			rr := '1';
+			vcno <= vcmi;
+			no_r := '1';
+			vcmi_a <= '1';
 		elsif(vcsi_r = '1' and no_r = '0' and eo_r = '0') then
+-- Slave to Network
 			pagenr := 0;
 			maskstart := 0;
 			faddr := vcsi.flit(1)(31 downto 20);
@@ -357,6 +367,7 @@ begin
 		vincr := 0;
 		vwrite := '0';
 		datastore <= (others => (others => '0'));
+		datastore(pagebase) <= x"ffffffff";
 		co_a <= '0';
 		loadstate := (others => '0');
 	elsif(clk'event and clk = '1') then
@@ -393,11 +404,12 @@ begin
 				end if;
 			elsif(co.flit(0)(31 downto 28) = "0100") then
 				datastore(1) <= co.flit(1);
-				datastore(0)(23 downto 21) <= "101";
+				datastore(0)(23) <= '1'; -- load page table
+				datastore(0)(21) <= '1'; -- remote config active
 				datastore(0)(19 downto 16) <= co.addr;
-			elsif(co.flit(0)(31 downto 28) = "0100") then
-				datastore(4)(31) <= '0';
-				datastore(4)(30) <= '1';
+			elsif(co.flit(0)(31 downto 28) = "0101") then
+				datastore(4)(31) <= '0'; -- deactivate send bit
+				datastore(4)(30) <= '1'; -- remote config completed
 				datastore(4)(27 downto 24) <= "0000";
 			end if;
 			co_a <= '1';
@@ -405,8 +417,12 @@ begin
 			co_a <= '0';
 		end if;
 		if(loadstate(0) = '1' and loadstate(1) = '1' and loadstate(2) = '1' and loadstate(3) = '1' and loadstate(4) = '1') then
-			datastore(0)(22) <= '1';
+			datastore(0)(22) <= '1'; -- load complete
+			datastore(0)(23) <= '0'; -- deactivate load bit
 			loadstate := (others => '0');
+		end if;
+		if(datastore(4)(31) = '1') then
+			datastore(4)(30) <= '0'; -- when send bit is active, complete bit can't
 		end if;
 		---- AHB -----------------------------------------------------------
 		rslv := ahbsi;
@@ -626,6 +642,7 @@ begin
 	---- Gaisler AHB Plug&Play status ---------------------------------------------
 	ahbso.hconfig <= hconfig;
   	ahbso.hindex  <= hindex;
+	acwr <= datastore(0)(0);
 	
 end process vcctrl_proc;
 

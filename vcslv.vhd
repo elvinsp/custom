@@ -442,6 +442,7 @@ begin
 		----------------------------------------------------------------------------
 		ahbso <= tslv;
 		requ_ready <= tx_r;
+		--requ.flit(1)(31 downto 24) <= x"46";
 	end if;
 	---- Gaisler AHB Plug&Play status ---------------------------------------------
 	ahbso.hconfig <= hconfig;

@@ -302,7 +302,7 @@ begin
 			---- hready -----------------------------------------------------
 		---- hgrant inactive -----------------------------------------------
 		else
-			if(conv_integer(noc_tx_reg.len) > 0 and busy = '1') then
+			if(conv_integer(noc_tx_reg.len) > 0 and busy = '1' and state /= 1) then
 				if(tready = '0') then
 					resp <= noc_tx_reg;
 					resp_ready <= '1';

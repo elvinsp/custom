@@ -43,24 +43,8 @@ type noc_transfer_reg is record
 	flit : flits;
 end record;
 
---type noc_flit_ahb is record
---	vio_header : std_logic_vector(31 downto 0); -- Virtual Controller Infos
---	ahb_header : std_logic_vector(31 downto 0); -- AHB Control Signals
---	ahb_haddr : std_logic_vector(31 downto 0);  -- AHB Address
---	ahb_hdata : std_logic_vector(31 downto 0);  -- AHB Data
---end record;
---
---type noc_io_config is record
---	vio_header : std_logic_vector(31 downto 0);
---	io_resource : std_logic_vector(31 downto 0);
---	io_state : std_logic_vector(31 downto 0);
---end record;
-
 -- constants
---constant noc_io_config_none : noc_io_config := ((others => '0'), (others => '0'), (others => '0'));
---constant noc_flit_ahb_none : noc_flit_ahb := ((others => '0'), (others => '0'), (others => '0'), (others => '0'));
-constant flit_none : flits := ((others => '0'), (others => '0'), (others => '0'), (others => '0'), (others => '0'));
-constant noc_transfer_none : noc_transfer_reg := ((others => '0'), (others => '0'), flit_none);
+constant noc_transfer_none : noc_transfer_reg := (len => (others => '0'), addr => (others => '0'), flit => (others => (others => '0')));
 
 component vcmst
 	 generic( hindex : integer := 0);
@@ -106,6 +90,7 @@ component vcctrl is
 				 iomask : integer := 16#fff#);
     Port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;
+			  acwr : out std_logic;
 			  ahbsi : in ahb_slv_in_type;
 			  ahbso : out ahb_slv_out_type;
 			  vcmi_r : in std_logic;

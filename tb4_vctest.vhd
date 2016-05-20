@@ -78,7 +78,7 @@ BEGIN
 		generic map(hindex => 0)
 		port map(rstn, clkm, mst0_rx_ready, mst0_rx_ack, mst0_rx, mst0_tx_ready, mst0_tx_ack, mst0_tx, ahb0mi, ahb0mo(0));
 	leon_slv0: vcslv
-		generic map(hindex => 0, memaddr => 16#500#)
+		generic map(hindex => 0, ioaddr => 16#500#)
 		port map(rstn, clkm, '0', slv_tx_ready, slv_tx_ack, slv_tx, slv_rx_ready, slv_rx_ack, slv_rx, ahb0si, ahb0so(0));
 	
 	io_ahb1 : ahbctrl       -- AHB arbiter/multiplexer
