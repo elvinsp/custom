@@ -81,7 +81,6 @@ begin
 		vincr := 0;
 		flit_index := 0;
 	elsif(clk'event and clk = '1') then
-		rmst := ahbmi;
 		if(requ_ready = '1' and busy = '0') then
 			noc_rx_reg := requ;
 			-- master busy no new packets til tready = 0 for new packet transmission
@@ -101,16 +100,18 @@ begin
 			tready := '0';
 		end if;
 		---- AHB -----------------------------------------------------------
+		rmst := ahbmi;
+		if(state = 0) then
+			tmst := ahbm_none;
+			busy := '0';
+		end if;
 		if(rmst.hgrant(hindex) = '1') then
 			if(rmst.hready = '1') then
 				if(rmst.hresp = "00") then
 					if((noc_rx_reg.flit(0)(15) = '0' and conv_integer(noc_rx_reg.len) = 2) or (noc_rx_reg.flit(0)(15) = '1' and conv_integer(noc_rx_reg.len) > 2)) then
 						---- AHB RX/TX handling --------------------------------
-						if(state = 0) then
-							tmst := ahbm_none;
-							busy := '0';
 						---- 1st Address ---------------------------------------
-						elsif(state = 1) then
+						if(state = 1) then
 							tmst.htrans := "10";
 							tmst.hwrite := noc_rx_reg.flit(0)(15);
 							tmst.hsize := noc_rx_reg.flit(0)(14 downto 12);
@@ -301,40 +302,77 @@ begin
 			end if;
 			---- hready -----------------------------------------------------
 		---- hgrant inactive -----------------------------------------------
-		else
-			if(conv_integer(noc_tx_reg.len) > 0 and busy = '1' and state /= 1) then
-				if(tready = '0') then
-					resp <= noc_tx_reg;
-					resp_ready <= '1';
-					tready := '1';
-					busy := '0';
-				end if;
-			end if;
-		end if;
 --		else
---			if(state = 4) then
---				if(noc_rx_reg.flit(0)(15) = '0') then
---					noc_tx_reg.flit(flit_index-1) := rmst.hrdata(31 downto 0);
---				elsif(noc_rx_reg.flit(0)(2) = '1') then
---					noc_tx_reg.flit(0)(1 downto 0) := "00";
---				end if;
---				noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
---				tmst := ahbm_none;
+--			if(conv_integer(noc_tx_reg.len) > 0 and busy = '1' and state /= 1) then
 --				if(tready = '0') then
 --					resp <= noc_tx_reg;
 --					resp_ready <= '1';
 --					tready := '1';
 --					busy := '0';
 --				end if;
---				state := 0;
---			end if;
---			if(tmst.hbusreq = '1') then
---				state := 1;
---			else
---				--busy := '0';
---				state := 0;
 --			end if;
 --		end if;
+		else
+			if(rmst.hready = '1') then
+				if(state = 4 and conv_integer(noc_tx_reg.len) > 1) then
+					if(rmst.hresp = "00") then
+						if(noc_rx_reg.flit(0)(15) = '0') then
+							noc_tx_reg.flit(flit_index-1) := rmst.hrdata(31 downto 0);
+							--noc_tx_reg.flit(flit_index-1)(7 downto 4) := x"A";
+						elsif(noc_rx_reg.flit(0)(2) = '1') then
+							noc_tx_reg.flit(0)(1 downto 0) := "00";
+						end if;
+					else
+						noc_tx_reg.flit(flit_index-1) := x"ffffffff";
+						noc_tx_reg.flit(0)(1 downto 0) := rmst.hresp;
+					end if;
+					noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
+					tmst := ahbm_none;
+					if(tready = '0') then
+						resp <= noc_tx_reg;
+						resp_ready <= '1';
+						noc_tx_reg := noc_transfer_none;
+						tready := '1';
+						busy := '0';
+					end if;
+					state := 0;
+				elsif(state = 2) then
+					tmst := ahbm_none;
+					---- send write data in case of write request -------
+					if(noc_rx_reg.flit(0)(15) = '1') then
+						tmst.hwdata(31 downto 0) := noc_rx_reg.flit(flit_index+1);
+						if(noc_rx_reg.flit(0)(2) = '0') then
+							state := 0;
+						else
+							state := 4;
+						end if;
+					else
+						state := 4;
+					end if;
+				end if;
+			else
+				if(rmst.hresp = "01") then
+					if(state = 4 and conv_integer(noc_tx_reg.len) > 1) then
+						noc_tx_reg.flit(flit_index-1) := x"ffffffff";
+						noc_tx_reg.flit(0)(1 downto 0) := rmst.hresp;
+						noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
+						tmst := ahbm_none;
+						if(tready = '0') then
+							resp <= noc_tx_reg;
+							resp_ready <= '1';
+							noc_tx_reg := noc_transfer_none;
+							tready := '1';
+							busy := '0';
+						end if;
+						state := 0;
+					end if;
+				elsif(rmst.hresp = "00") then
+					-- do nothing
+				else
+					state := 1;
+				end if;
+			end if;
+		end if;
 		---- hgrant - AHB --------------------------------------------------
 		ahbmo <= tmst;
 	end if;

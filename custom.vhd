@@ -138,55 +138,6 @@ component vcont is
 			  vcno : out noc_transfer_reg);
 end component;
 
-component vnic
-	generic (nic_hindex : integer := 0);
-   port (  res : in  STD_LOGIC;
-           clk : in  STD_LOGIC;
-			  nic_irq : in std_logic;
-			  nici : out ahb_slv_in_type;
-			  nico : in ahb_slv_out_type;
-			  --msti : in  ahb_mst_in_type;
-			  --msto : out ahb_mst_out_type;
-			  slvi : in ahb_slv_in_type;
-			  slvo : out ahb_slv_out_type);
-end component;
-
-component nocside
-	 generic (
-				hindex	: integer := 0;
-				dbg		: std_logic := '0');
-    Port ( 	res : in  STD_LOGIC;
-				clk : in  STD_LOGIC;
-				irq : out STD_LOGIC;
-				oready : out STD_LOGIC;
-				oack : in STD_LOGIC;
-				otransfer : out transfer_reg;
-				iready : in STD_LOGIC;
-				iack : out STD_LOGIC;
-				itransfer : in transfer_reg;
-				slvi  : in   ahb_slv_in_type;
-				slvo  : out  ahb_slv_out_type);
-end component;
-
-component top_noc
-	 generic (
-    leon_hindex : integer := 0;
-    leon_haddr  : integer := 16#200#;
-    hmask       : integer := 16#0ff#;
-	 io_hindex   : integer := 0;
-    io_haddr    : integer := 16#200#;
-	 dbg			 : std_logic := '0');
-    port (
-    rst     : in  std_logic;
-    clk     : in  std_logic;
-	 le_irq	: out std_logic;
-	 io_irq	: out std_logic;
-    le_slvi  : in   ahb_slv_in_type;
-    le_slvo  : out  ahb_slv_out_type;
-	 io_slvi    : in   ahb_slv_in_type;
-    io_slvo    : out  ahb_slv_out_type);
-end component;
-
 component testreg
     generic( hindex : integer := 0; membar : integer := 16#C00#; memmask : integer := 16#fff#; rom : std_logic := '0');
     Port ( res : in  STD_LOGIC;
@@ -195,8 +146,27 @@ component testreg
 			  ahbso : out ahb_slv_out_type);
 end component;
 
-function a2i(haddr : std_logic_vector(7 downto 0))
-  return integer;
+component ahbtst is
+    generic( hindex : integer := 0;
+				 membar : integer := 16#C00#;
+				 memmask : integer := 16#fff#);
+    Port ( res : in  STD_LOGIC;
+           clk : in  STD_LOGIC;
+			  ahbsi : in ahb_slv_in_type;
+			  ahbso : out ahb_slv_out_type;
+			  requ_ready : in std_logic;
+			  requ_ack : out std_logic;
+			  requ : in noc_transfer_reg;
+			  resp_ready : out std_logic;
+			  resp_ack : in std_logic;
+			  resp : out noc_transfer_reg;
+			  ctrl : out std_logic);
+end component;
+
+end custom;
+
+--function a2i(haddr : std_logic_vector(7 downto 0))
+--  return integer;
 
 --procedure mstwrite(
 --	constant address : in std_logic_vector(31 downto 0);
@@ -210,73 +180,120 @@ function a2i(haddr : std_logic_vector(7 downto 0))
 --	signal nt_a : in std_logic;
 --	signal nt : out noc_transfer_reg);
 
-end custom;
+--component vnic
+--	generic (nic_hindex : integer := 0);
+--   port (  res : in  STD_LOGIC;
+--           clk : in  STD_LOGIC;
+--			  nic_irq : in std_logic;
+--			  nici : out ahb_slv_in_type;
+--			  nico : in ahb_slv_out_type;
+--			  --msti : in  ahb_mst_in_type;
+--			  --msto : out ahb_mst_out_type;
+--			  slvi : in ahb_slv_in_type;
+--			  slvo : out ahb_slv_out_type);
+--end component;
+--
+--component nocside
+--	 generic (
+--				hindex	: integer := 0;
+--				dbg		: std_logic := '0');
+--    Port ( 	res : in  STD_LOGIC;
+--				clk : in  STD_LOGIC;
+--				irq : out STD_LOGIC;
+--				oready : out STD_LOGIC;
+--				oack : in STD_LOGIC;
+--				otransfer : out transfer_reg;
+--				iready : in STD_LOGIC;
+--				iack : out STD_LOGIC;
+--				itransfer : in transfer_reg;
+--				slvi  : in   ahb_slv_in_type;
+--				slvo  : out  ahb_slv_out_type);
+--end component;
+--
+--component top_noc
+--	 generic (
+--    leon_hindex : integer := 0;
+--    leon_haddr  : integer := 16#200#;
+--    hmask       : integer := 16#0ff#;
+--	 io_hindex   : integer := 0;
+--    io_haddr    : integer := 16#200#;
+--	 dbg			 : std_logic := '0');
+--    port (
+--    rst     : in  std_logic;
+--    clk     : in  std_logic;
+--	 le_irq	: out std_logic;
+--	 io_irq	: out std_logic;
+--    le_slvi  : in   ahb_slv_in_type;
+--    le_slvo  : out  ahb_slv_out_type;
+--	 io_slvi    : in   ahb_slv_in_type;
+--    io_slvo    : out  ahb_slv_out_type);
+--end component;
 
-package body custom is
+--package body custom is
+--
+--function a2i (
+--    haddr : std_logic_vector(7 downto 0))
+--    return integer is
+--    variable index : integer;
+--begin
+--	case haddr(7 downto 0) is
+--		when x"00" =>
+--			return 0;
+--		when x"04" =>
+--			return 1;
+--		when x"08" =>
+--			return 2;
+--		when x"10" =>
+--			return 3;
+--		when x"14" =>
+--			return 4;
+--		when x"18" =>
+--			return 5;
+--		when x"1c" =>
+--			return 6;
+--		when x"20" =>
+--			return 7;
+--		when x"24" =>
+--			return 8;
+--		when x"30" =>
+--			return 9;
+--		when x"34" =>
+--			return 10;
+--		when x"38" =>
+--			return 11;
+--		when x"3c" =>
+--			return 12;
+--		when x"40" =>
+--			return 13;
+--		when x"44" =>
+--			return 14;
+--		when x"50" =>
+--			return 15;
+--		when x"54" =>
+--			return 16;
+--		when x"58" =>
+--			return 17;
+--		when x"5c" =>
+--			return 18;
+--		when x"60" =>
+--			return 19;
+--		when x"64" =>
+--			return 20;
+--		when x"70" =>
+--			return 21;
+--		when x"74" =>
+--			return 22;
+--		when x"78" =>
+--			return 23;
+--		when x"7c" =>
+--			return 24;
+--		when x"80" =>
+--			return 25;
+--		when x"84" =>
+--			return 26;
+--		when others =>
+--			return -1;
+--	end case;
+--end a2i;
 
-function a2i (
-    haddr : std_logic_vector(7 downto 0))
-    return integer is
-    variable index : integer;
-begin
-	case haddr(7 downto 0) is
-		when x"00" =>
-			return 0;
-		when x"04" =>
-			return 1;
-		when x"08" =>
-			return 2;
-		when x"10" =>
-			return 3;
-		when x"14" =>
-			return 4;
-		when x"18" =>
-			return 5;
-		when x"1c" =>
-			return 6;
-		when x"20" =>
-			return 7;
-		when x"24" =>
-			return 8;
-		when x"30" =>
-			return 9;
-		when x"34" =>
-			return 10;
-		when x"38" =>
-			return 11;
-		when x"3c" =>
-			return 12;
-		when x"40" =>
-			return 13;
-		when x"44" =>
-			return 14;
-		when x"50" =>
-			return 15;
-		when x"54" =>
-			return 16;
-		when x"58" =>
-			return 17;
-		when x"5c" =>
-			return 18;
-		when x"60" =>
-			return 19;
-		when x"64" =>
-			return 20;
-		when x"70" =>
-			return 21;
-		when x"74" =>
-			return 22;
-		when x"78" =>
-			return 23;
-		when x"7c" =>
-			return 24;
-		when x"80" =>
-			return 25;
-		when x"84" =>
-			return 26;
-		when others =>
-			return -1;
-	end case;
-end a2i;
-
-end custom;
+--end custom;

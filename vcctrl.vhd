@@ -598,7 +598,7 @@ begin
 				tslv := ahbs_none;
 			elsif(tslv.hresp = "00" and tslv.hready = '1') then
 				---- HTRANS: IDLE ----
-				if(rslv.htrans = "00") then
+				--if(rslv.htrans = "00") then
 					tslv := ahbs_none;
 					if(bstate = 1) then
 						if(vwrite = '1') then
@@ -629,7 +629,8 @@ begin
 					vaddr := x"00";
 					vincr := 0;
 					vwrite := '0';
-				end if;
+					bstate := 0;
+				--end if;
 				----  rslv.htrans -----
 			---- tslv.hresp -----
 			else

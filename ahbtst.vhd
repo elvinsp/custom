@@ -2,9 +2,9 @@
 -- Company: 
 -- Engineer: 
 -- 
--- Create Date:    16:35:58 03/30/2016 
+-- Create Date:    01:40:16 02/07/2016 
 -- Design Name: 
--- Module Name:    ahbtst - Behavioral 
+-- Module Name:    vcslv - Behavioral 
 -- Project Name: 
 -- Target Devices: 
 -- Tool versions: 
@@ -17,8 +17,8 @@
 -- Additional Comments: 
 --
 ----------------------------------------------------------------------------------
-library IEEE;
-use IEEE.STD_LOGIC_1164.ALL;
+library ieee;
+use ieee.std_logic_1164.all;
 library grlib;
 use grlib.stdlib.all;
 use grlib.amba.all;
@@ -35,201 +35,305 @@ use gaisler.custom.all;
 --use UNISIM.VComponents.all;
 
 entity ahbtst is
+    generic( hindex : integer := 0;
+				 membar : integer := 16#C00#;
+				 memmask : integer := 16#fff#;
+				 rom : std_logic := '0');
     Port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;
-			  tstin_r : in std_logic;
-			  tstin_a : out std_logic;
-			  tstin : in std_logic_vector(67 downto 0);
-			  tstout_r : out std_logic;
-			  tstout : out std_logic_vector(67 downto 0));
+			  ahbsi : in ahb_slv_in_type;
+			  ahbso : out ahb_slv_out_type;
+			  requ_ready : in std_logic;
+			  requ_ack : out std_logic;
+			  requ : in noc_transfer_reg;
+			  resp_ready : out std_logic;
+			  resp_ack : in std_logic;
+			  resp : out noc_transfer_reg;
+			  ctrl : out std_logic);
 end ahbtst;
 
 architecture Behavioral of ahbtst is
+constant hconfig : ahb_config_type := (
+  0 => ahb_device_reg ( 16#01#, 16#01B#, 0, 0, 0), --ahb_device_reg (VENDOR_EXAMPLE, EXAMPLE_AHBRAM, 0, 0, 0)
+  4 => ahb_membar(membar, '0', '0', memmask), -- ahb_membar(memaddr, '0', '0', memmask), others => X"00000000");
+  others => zero32);
+
+constant baddr : std_logic_vector(23 downto 0) := conv_std_logic_vector(membar,12)&x"000";
+  
+type store is array (0 to 63) of std_logic_vector(31 downto 0);
+
 begin
 
-process(res, clk)
-variable tmst : ahb_mst_out_type;
-variable rmst : ahb_mst_in_type;
+ahbtst_proc: process(clk, res)
+variable rslv : ahb_slv_in_type;
+variable tslv : ahb_slv_out_type;
+variable bstate : integer range 0 to 1; -- burst status
+variable datastore : store;
+variable vaddr : std_logic_vector(7 downto 0);
+variable vincr : integer;
+variable vwrite : std_logic;
+variable inflag : std_logic;
 begin
 	if(res = '0') then
+		ahbso <= ahbs_none;
+		tslv := ahbs_none;
+		bstate := 0; -- no bursts
+		vaddr := x"00";
+		vincr := 0;
+		vwrite := '0';
+		inflag := '0';
+		requ_ack <= '0';
+		resp_ready <= '0';
+		resp <= noc_transfer_none;
+		datastore := (others => (others => '0'));
 	elsif(clk'event and clk = '1') then
+		--------------------------------------------------------------------
+		if(requ_ready = '0') then
+			inflag := '0';
+			requ_ack <= '0';
+		end if;
+		if(requ_ready = '1' and inflag = '0') then
+			datastore(0)(7 downto 4) := requ.addr;
+			datastore(0)(10 downto 8) := requ.len;
+			datastore(1) := requ.flit(0);
+			datastore(2) := requ.flit(1);
+			datastore(3) := requ.flit(2);
+			datastore(4) := requ.flit(3);
+			datastore(5) := requ.flit(4);
+			datastore(0)(0) := '0';
+			inflag := '1';
+			resp <= requ;
+			resp_ready <= '1';
+		end if;
+		if(datastore(0)(0) = '1' and inflag = '1') then
+			requ_ack <= '1';
+			datastore(0)(0) := '0';
+		end if;
+		if(resp_ack = '1') then
+			resp_ready <= '0';
+		end if;
+		datastore(0)(3) := inflag;
 		---- AHB -----------------------------------------------------------
-		if(rmst.hgrant(hindex) = '1') then
-			if(rmst.hready = '1') then
-				if(rmst.hresp = "00") then
-					if(conv_integer(noc_rx_reg.len) > 1) then
-						---- AHB RX/TX handling --------------------------------
-						if(state = 0) then
-							tmst := ahbm_none;
-						--------------------------------------------------------
-						elsif(state = 1) then
-							tmst.htrans := "10";
-							tmst.hwrite := noc_rx_reg.flit(0)(15);
-							tmst.hsize := noc_rx_reg.flit(0)(14 downto 12);
-							tmst.hburst := noc_rx_reg.flit(0)(7 downto 5);
-							tmst.hprot := noc_rx_reg.flit(0)(11 downto 8);
-							---- save haddr and hsize in case of burst for later increment ----
-							---- only 10 bit for 1kB burst boundary according to AMBA Spec Rev 2.0 Chapter 3.6 ----
-							vaddr := conv_integer(noc_rx_reg.flit(1)(9 downto 0)); -- if(noc_rx_reg.flit(1)(9 downto 4) = "111111") then ---- check 1kB alignment
-							---- hsize and haddr alignment check ----
-							if(noc_rx_reg.flit(0)(14 downto 12) = "000") then
+		rslv := ahbsi;
+		if(rslv.hsel(hindex) = '1') then
+			if(tslv.hresp = "00" and tslv.hready = '1') then -- check in which response mode the slave is in
+				---- HTRANS: NONSEQ ----
+				if(rslv.htrans = "10") then
+					-- new Burst has begun, finish up old Burst and start new one if it is a WRITE
+					bstate := 0;
+					if(bstate = 0) then
+						bstate := 1;
+						vwrite := rslv.hwrite;
+						tslv.hready := '1';
+						if(rslv.haddr(31 downto 8) = baddr) then
+							vaddr := rslv.haddr(7 downto 0);
+							---- BYTE
+							if(rslv.hsize = "000") then
 								vincr := 1;
-							elsif(noc_rx_reg.flit(0)(14 downto 12) = "001" and noc_rx_reg.flit(1)(0) = '0') then
+							---- HALFWORD
+							elsif(rslv.hsize = "001" and rslv.haddr(0) = '0') then
 								vincr := 2;
-							elsif(noc_rx_reg.flit(0)(14 downto 12) = "010" and noc_rx_reg.flit(1)(1 downto 0) = "00") then
+							---- WORD
+							elsif(rslv.hsize = "010" and rslv.haddr(1 downto 0) = "00") then
 								vincr := 4;
-							end if;
-							---- prepare response packet
-							if(noc_rx_reg.flit(0)(15) = '0') then
-								noc_tx_reg.len := conv_std_logic_vector(2,3);
-								noc_tx_reg.flit(0) := noc_rx_reg.flit(0);
-								if(noc_tx_reg.flit(0)(31 downto 28) = "0010") then
-									noc_tx_reg.flit(0)(31 downto 28) := "0011";
-								elsif(noc_tx_reg.flit(0)(31 downto 28) = "0100") then
-									noc_tx_reg.flit(0)(31 downto 28) := "0101";
-								end if;
-							end if;
-							tmst.haddr := noc_rx_reg.flit(1);
-							tmst.haddr(9 downto 0) := conv_std_logic_vector(vaddr+vincr*flit_index,10);
-							flit_index := flit_index + 1;
-							state := 2;
-						---------------------------------------------------------
-						elsif(state = 2) then
-							---- in case of burst write next addr to Bus ---------
-							state := 3;
-							if(noc_rx_reg.flit(0)(7 downto 5) /= "000") then
-								tmst.htrans := "11";
-								tmst.haddr := noc_rx_reg.flit(1);
-								tmst.haddr(9 downto 0) := conv_std_logic_vector(vaddr+vincr*flit_index,10);
-								---- send write data in case of write request -------
-								if(noc_rx_reg.flit(0)(15) = '1') then
-									tmst.hwdata(31 downto 0) := noc_rx_reg.flit(flit_index+1);
-								end if;
 							else
-								tmst := ahbm_none;
-								---- send write data in case of write request -------
-								if(noc_rx_reg.flit(0)(15) = '1') then
-									tmst.hwdata(31 downto 0) := noc_rx_reg.flit(flit_index+1);
-									state := 0;
-									busy := '0';
-								else
-									state := 4;
-								end if;
+								tslv.hresp := "01";
+								tslv.hready := '0';
 							end if;
-							flit_index := flit_index + 1;
-						--------------------------------------------------------
-						elsif(state = 3) then
-							if(noc_rx_reg.flit(0)(7 downto 5) = "000") then
-								---- only read possible here ----
-								if(noc_rx_reg.flit(0)(15) = '0') then
-									noc_tx_reg.flit(flit_index-1) := rmst.hrdata(31 downto 0);
-									noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
-									if(tready = '0') then
-										resp <= noc_tx_reg;
-										resp_ready <= '1';
-										tready := '1';
-										busy := '0';
-									end if;
-								end if;
-								state := 0;
-							else
-								if(noc_rx_reg.flit(0)(15) = '1') then
-									tmst.haddr := noc_rx_reg.flit(1);
-									tmst.haddr(9 downto 0) := conv_std_logic_vector(vaddr+vincr*flit_index,10);
-									if(flit_index+2 < conv_integer(noc_rx_reg.len)) then
-										tmst.hwdata(31 downto 0) := noc_rx_reg.flit(flit_index+1);
-										--flit_index := flit_index + 1;
-									else
-										tmst := ahbm_none;
-										tmst.hwdata(31 downto 0) := noc_rx_reg.flit(flit_index+1);
-										state := 0;
-										busy := '0';
-									end if;
-								else
-									if(flit_index < 5) then
-										noc_tx_reg.flit(flit_index-1) := rmst.hrdata(31 downto 0);
-										noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
-										if(flit_index = 4) then
-											tmst := ahbm_none;
-											state := 4;
-										else
-											tmst.haddr := noc_rx_reg.flit(1);
-											tmst.haddr(9 downto 0) := conv_std_logic_vector(vaddr+vincr*flit_index,10);
-										end if;
-										--flit_index := flit_index + 1;
-									end if;
-									-- read
-								end if;
-							end if;
-							flit_index := flit_index + 1;
-						elsif(state = 4) then
-							noc_tx_reg.flit(flit_index-1) := rmst.hrdata(31 downto 0);
-							noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
-							tmst := ahbm_none;
-							if(tready = '0') then
-								resp <= noc_tx_reg;
-								resp_ready <= '1';
-								tready := '1';
-								busy := '0';
-							end if;
-							state := 0;
 						else
+							tslv.hresp := "01";
+							tslv.hready := '0';
 						end if;
-						---- state ---------------------------------------------
-					end if;
-					---- noc_rx_reg.len ---------------------------------------
-				end if;
-				---- hresp ---------------------------------------------------
-			---- hready inactive --------------------------------------------
-			else
-				if(rmst.hresp /= "00") then
-					tmst := ahbm_none;
-					if(rmst.hresp = "01") then
-						if(noc_rx_reg.flit(0)(15) = '0' or noc_rx_reg.flit(0)(2) = '1') then
-							noc_tx_reg.flit(0)(1 downto 0) := rmst.hresp;
-							noc_tx_reg.flit(flit_index-1) := x"ffffffff";
-							noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
-							if(tready = '0') then
-								resp <= noc_tx_reg;
-								resp_ready <= '1';
-								tready := '1';
-								busy := '0';
+						if(vwrite = '0') then
+							---- BYTE
+							if(vincr = 1) then
+								if(vaddr(1 downto 0) = "00") then
+									tslv.hrdata(31 downto 24) := datastore(conv_integer(vaddr(7 downto 2)))(31 downto 24);
+								elsif(vaddr(1 downto 0) = "01") then
+									tslv.hrdata(23 downto 16) := datastore(conv_integer(vaddr(7 downto 2)))(23 downto 16);
+								elsif(vaddr(1 downto 0) = "10") then
+									tslv.hrdata(15 downto 8) := datastore(conv_integer(vaddr(7 downto 2)))(15 downto 8);
+								elsif(vaddr(1 downto 0) = "11") then
+									tslv.hrdata(7 downto 0) := datastore(conv_integer(vaddr(7 downto 2)))(7 downto 0);
+								end if;
+							---- HALFWORD
+							elsif(vincr = 2) then
+								if(vaddr(1 downto 0) = "00") then
+									tslv.hrdata(31 downto 16) := datastore(conv_integer(vaddr(7 downto 2)))(31 downto 16);
+								elsif(vaddr(1 downto 0) = "10") then
+									tslv.hrdata(15 downto 0) := datastore(conv_integer(vaddr(7 downto 2)))(15 downto 0);
+								end if;
+							---- WORD
+							elsif(vincr = 4) then
+								tslv.hrdata(31 downto 0) := datastore(conv_integer(vaddr(7 downto 2)));
 							end if;
-							state := 0;
+						end if;
+					end if;
+				---- HTRANS: SEQ ----
+				elsif(rslv.htrans = "11") then
+					if(bstate = 1) then
+						tslv.hready := '1';
+						if(vwrite = '1') then
+							---- BYTE
+							if(vincr = 1) then
+								if(vaddr(1 downto 0) = "00") then
+									datastore(conv_integer(vaddr(7 downto 2)))(31 downto 24) := rslv.hwdata(31 downto 24);
+								elsif(vaddr(1 downto 0) = "01") then
+									datastore(conv_integer(vaddr(7 downto 2)))(23 downto 16) := rslv.hwdata(23 downto 16);
+								elsif(vaddr(1 downto 0) = "10") then
+									datastore(conv_integer(vaddr(7 downto 2)))(15 downto 8) := rslv.hwdata(15 downto 8);
+								elsif(vaddr(1 downto 0) = "11") then
+									datastore(conv_integer(vaddr(7 downto 2)))(7 downto 0) := rslv.hwdata(7 downto 0);
+								end if;
+							---- HALFWORD
+							elsif(vincr = 2) then
+								if(vaddr(1 downto 0) = "00") then
+									datastore(conv_integer(vaddr(7 downto 2)))(31 downto 16) := rslv.hwdata(31 downto 16);
+								elsif(vaddr(1 downto 0) = "10") then
+									datastore(conv_integer(vaddr(7 downto 2)))(15 downto 0) := rslv.hwdata(15 downto 0);
+								end if;
+							---- WORD
+							elsif(vincr = 4) then
+								datastore(conv_integer(vaddr(7 downto 2))) := rslv.hwdata(31 downto 0);
+							end if;
+						end if;
+						if(rslv.haddr(31 downto 8) = baddr) then
+							if(conv_integer(rslv.haddr(7 downto 0)) = conv_integer(vaddr)+vincr) then
+								---- increment if incoming SEQ addr is coresponding with NONSEQ start addr
+								vaddr := conv_std_logic_vector(conv_integer(vaddr)+vincr,8);
+								if(vwrite = '0') then
+									---- BYTE
+									if(vincr = 1) then
+										if(vaddr(1 downto 0) = "00") then
+											tslv.hrdata(31 downto 24) := datastore(conv_integer(vaddr(7 downto 2)))(31 downto 24);
+										elsif(vaddr(1 downto 0) = "01") then
+											tslv.hrdata(23 downto 16) := datastore(conv_integer(vaddr(7 downto 2)))(23 downto 16);
+										elsif(vaddr(1 downto 0) = "10") then
+											tslv.hrdata(15 downto 8) := datastore(conv_integer(vaddr(7 downto 2)))(15 downto 8);
+										elsif(vaddr(1 downto 0) = "11") then
+											tslv.hrdata(7 downto 0) := datastore(conv_integer(vaddr(7 downto 2)))(7 downto 0);
+										end if;
+									---- HALFWORD
+									elsif(vincr = 2) then
+										if(vaddr(1 downto 0) = "00") then
+											tslv.hrdata(31 downto 16) := datastore(conv_integer(vaddr(7 downto 2)))(31 downto 16);
+										elsif(vaddr(1 downto 0) = "10") then
+											tslv.hrdata(15 downto 0) := datastore(conv_integer(vaddr(7 downto 2)))(15 downto 0);
+										end if;
+									---- WORD
+									elsif(vincr = 4) then
+										tslv.hrdata(31 downto 0) := datastore(conv_integer(vaddr(7 downto 2)));
+									end if;
+								end if;
+							end if;
+						else
+							tslv.hresp := "01";
+							tslv.hready := '0';
 						end if;
 					else
-						tmst.hbusreq := '1';
-						flit_index := flit_index - 2; -- only possible when flit_index increase after each state transition
-						state := 1;
+						tslv.hresp := "01";
+						tslv.hready := '1';
 					end if;
+				---- HTRANS: IDLE ----
+				elsif(rslv.htrans = "00") then
+					tslv := ahbs_none;
+					if(bstate = 1) then
+						if(vwrite = '1') then
+							if(vincr = 1) then
+								if(vaddr(1 downto 0) = "00") then
+									datastore(conv_integer(vaddr(7 downto 2)))(31 downto 24) := rslv.hwdata(31 downto 24);
+								elsif(vaddr(1 downto 0) = "01") then
+									datastore(conv_integer(vaddr(7 downto 2)))(23 downto 16) := rslv.hwdata(23 downto 16);
+								elsif(vaddr(1 downto 0) = "10") then
+									datastore(conv_integer(vaddr(7 downto 2)))(15 downto 8) := rslv.hwdata(15 downto 8);
+								elsif(vaddr(1 downto 0) = "11") then
+									datastore(conv_integer(vaddr(7 downto 2)))(7 downto 0) := rslv.hwdata(7 downto 0);
+								end if;
+							elsif(vincr = 2) then
+								if(vaddr(1 downto 0) = "00") then
+									datastore(conv_integer(vaddr(7 downto 2)))(31 downto 16) := rslv.hwdata(31 downto 16);
+								elsif(vaddr(1 downto 0) = "10") then
+									datastore(conv_integer(vaddr(7 downto 2)))(15 downto 0) := rslv.hwdata(15 downto 0);
+								end if;
+							elsif(vincr = 4) then
+								datastore(conv_integer(vaddr(7 downto 2))) := rslv.hwdata(31 downto 0);
+							end if;
+						end if;
+					end if;
+					vaddr := x"00";
+					vincr := 0;
+					vwrite := '0';
 				end if;
-				---- hresp ---------------------------------------------------
-			end if;
-			---- hready -----------------------------------------------------
-		---- hgrant inactive -----------------------------------------------
-		else
-			if(state = 4) then
-				noc_tx_reg.flit(flit_index-1) := rmst.hrdata(31 downto 0);
-				noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
-				tmst := ahbm_none;
-				if(tready = '0') then
-					resp <= noc_tx_reg;
-					resp_ready <= '1';
-					tready := '1';
-					busy := '0';
+				---- End of HTRANS ----
+			---- ERROR/SPLIT Handling(3/3) -----------------------------------------
+			elsif(tslv.hresp /= "00" and tslv.hready = '1') then
+				-- 2nd cycle of two-cycle response according to AMBA Spec (Rev 2.0) Chapter 3.9.3
+				if(rslv.htrans = "00") then
+					tslv.hresp := "00";
+				else
+					tslv.hready := '0';
 				end if;
-				state := 0;
-			end if;
-			if(tmst.hbusreq = '1') then
-				state := 1;
+			---- ERROR/SPLIT Handling(2/3) -----------------------------------------
 			else
-				busy := '0';
-				state := 0;
+				tslv.hready := '1';
+				if(tslv.hresp = "10") then
+					bstate := 0;
+				end if;
 			end if;
-		end if;
-		---- hgrant - AHB --------------------------------------------------
-		ahbmo <= tmst;
+		---- HSEL inactive ----
+		else
+			--- handle last write ---------------------------------------------------------------------???
+			if(tslv.hresp /= "00" and tslv.hready = '1') then
+				tslv := ahbs_none;
+			elsif(tslv.hresp = "00" and tslv.hready = '1') then
+				---- HTRANS: IDLE ----
+				--if(rslv.htrans = "00") then
+					tslv := ahbs_none;
+					if(bstate = 1) then
+						if(vwrite = '1') then
+							if(vincr = 1) then
+								if(vaddr(1 downto 0) = "00") then
+									datastore(conv_integer(vaddr(7 downto 2)))(31 downto 24) := rslv.hwdata(31 downto 24);
+								elsif(vaddr(1 downto 0) = "01") then
+									datastore(conv_integer(vaddr(7 downto 2)))(23 downto 16) := rslv.hwdata(23 downto 16);
+								elsif(vaddr(1 downto 0) = "10") then
+									datastore(conv_integer(vaddr(7 downto 2)))(15 downto 8) := rslv.hwdata(15 downto 8);
+								elsif(vaddr(1 downto 0) = "11") then
+									datastore(conv_integer(vaddr(7 downto 2)))(7 downto 0) := rslv.hwdata(7 downto 0);
+								end if;
+							elsif(vincr = 2) then
+								if(vaddr(1 downto 0) = "00") then
+									datastore(conv_integer(vaddr(7 downto 2)))(31 downto 16) := rslv.hwdata(31 downto 16);
+								elsif(vaddr(1 downto 0) = "10") then
+									datastore(conv_integer(vaddr(7 downto 2)))(15 downto 0) := rslv.hwdata(15 downto 0);
+								end if;
+							elsif(vincr = 4) then
+								datastore(conv_integer(vaddr(7 downto 2))) := rslv.hwdata(31 downto 0);
+							end if;
+							---- vincr ----
+						end if;
+						---- vwrite ----
+					end if;
+					---- bstate ----
+					vaddr := x"00";
+					vincr := 0;
+					vwrite := '0';
+					bstate = 0;
+				--end if;
+				----  rslv.htrans -----
+			---- tslv.hresp -----
+			else
+				tslv.hready := '1';
+			end if;
+		end if;	
+		----------------------------------------------------------------------------
+		ahbso <= tslv;
+		ctrl <= datastore(6)(0);
 	end if;
-end process;
-end Behavioral;
+	---- Gaisler AHB Plug&Play status ---------------------------------------------
+	ahbso.hconfig <= hconfig;
+  	ahbso.hindex  <= hindex;
+	
+end process ahbtst_proc;
 
+end Behavioral;

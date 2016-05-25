@@ -4,3 +4,4 @@ vcmst.vhd
 vcslv.vhd
 vcctrl.vhd
 vcont.vhd
+ahbtst.vhd

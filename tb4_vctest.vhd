@@ -72,7 +72,7 @@ BEGIN
 	leon_ahb0 : ahbctrl       -- AHB arbiter/multiplexer
 				generic map (defmast => 0, split => 1, 
 									rrobin => 1, ioaddr => 16#800#,
-									ioen => 1, nahbm => 1, nahbs => 1)
+									ioen => 1, nahbm => 1, nahbs => 2)
 				port map (rstn, clkm, ahb0mi, ahb0mo, ahb0si, ahb0so);
 	leon_mst0 : vcmst
 		generic map(hindex => 0)
@@ -80,18 +80,21 @@ BEGIN
 	leon_slv0: vcslv
 		generic map(hindex => 0, ioaddr => 16#500#)
 		port map(rstn, clkm, '0', slv_tx_ready, slv_tx_ack, slv_tx, slv_rx_ready, slv_rx_ack, slv_rx, ahb0si, ahb0so(0));
+	io_slv_xx: ahbtst
+		generic map(hindex => 1, membar => 16#600#)
+		port map(rstn, clkm, ahb0si, ahb0so(1), slv_tx_ready, slv_tx_ack, slv_tx, slv_rx_ready, slv_rx_ack, slv_rx);
 	
-	io_ahb1 : ahbctrl       -- AHB arbiter/multiplexer
-				generic map (defmast => 0, split => 1, 
-									rrobin => 1, ioaddr => 16#800#,
-									ioen => 1, nahbm => 1, nahbs => 1)
-				port map (rstn, clkm, ahb1mi, ahb1mo, ahb1si, ahb1so);	
-	io_mst1 : vcmst
-		generic map(hindex => 0)
-		port map(rstn, clkm, slv_tx_ready, slv_tx_ack, slv_tx, slv_rx_ready, slv_rx_ack, slv_rx, ahb1mi, ahb1mo(0));
-	io_slv1: testreg
-		generic map(hindex => 0, membar => 16#500#)
-		port map(rstn, clkm, ahb1si, ahb1so(0));
+--	io_ahb1 : ahbctrl       -- AHB arbiter/multiplexer
+--				generic map (defmast => 0, split => 1, 
+--									rrobin => 1, ioaddr => 16#800#,
+--									ioen => 1, nahbm => 1, nahbs => 1)
+--				port map (rstn, clkm, ahb1mi, ahb1mo, ahb1si, ahb1so);	
+--	io_mst1 : vcmst
+--		generic map(hindex => 0)
+--		port map(rstn, clkm, slv_tx_ready, slv_tx_ack, slv_tx, slv_rx_ready, slv_rx_ack, slv_rx, ahb1mi, ahb1mo(0));
+--	io_slv1: testreg
+--		generic map(hindex => 0, membar => 16#500#)
+--		port map(rstn, clkm, ahb1si, ahb1so(0));
 
    -- Clock process definitions
    clk_process :process

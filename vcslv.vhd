@@ -107,6 +107,7 @@ begin
 		rslv := ahbsi;
 		if(rslv.hsel(hindex) = '1') then
 			if(tslv.hresp = "00" and tslv.hready = '1') then -- check in which response mode the slave is in
+				tslv.hrdata := x"00000000";
 				if(conv_integer(rslv.hmaster) /= mindex) then -- prevent controller ahb loops
 					if(conv_integer(rslv.hmaster) = conv_integer(split_reg(conv_integer(sread))) 
 												and ((swrite(4) = '0' and conv_integer(sread) < conv_integer(swrite(3 downto 0))) 
@@ -183,6 +184,7 @@ begin
 								if(conv_integer(noc_tx_reg.len) > 1 and noc_tx_reg.flit(0)(15) = '1') then
 								--------------------------------------------------------------------------------------acwr
 									noc_tx_reg.flit(flit_index) := rslv.hwdata(31 downto 0);
+									--noc_tx_reg.flit(flit_index)(27 downto 24) := x"A"; --§
 									flit_index := flit_index + 1; ---- increase after use and before setting length (index starts at 0, length starts at 1)
 									noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
 									if(tready = '0') then
@@ -231,6 +233,7 @@ begin
 								noc_tx_reg.flit(0)(11 downto 8) := rslv.hprot;
 								noc_tx_reg.flit(1) := rslv.haddr;
 								flit_index := 2; ---- start new index at 2 (header and addr already used)
+								bstate := 1; -- new burst started
 								if(rslv.hwrite = '0') then
 									-- Doesn't matter if hburst INCR/WARP/SINGLE all will be handled on remote interface
 									noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
@@ -241,8 +244,6 @@ begin
 										tready := '1';
 										noc_tx_reg := noc_transfer_none;
 									end if;
-									--split_reg(conv_integer(swrite)) := rslv.hmaster;
-									--swrite := swrite + '1';
 									tslv.hresp := "11"; -- initiate SPLIT for read prefetch from remote interface
 									tslv.hready := '0';
 									bstate := 0;
@@ -252,11 +253,10 @@ begin
 									if(acwr = '0') then
 										noc_tx_reg.flit(0)(2) := '1';
 										noc_tx_reg.flit(0)(7 downto 5) := "000";
-										tslv.hresp := "11";
+										tslv.hresp := "11"; --
 										tslv.hready := '0';
 									end if;
 								end if;
-								bstate := 1; -- new burst started
 							-- (bstate) Busy because a still pending Request
 							else
 								split_reg(conv_integer(swrite)) := rslv.hmaster; -- setting SPLIT-Queue
@@ -281,12 +281,14 @@ begin
 								else
 									if(flit_index < 4) then
 										noc_tx_reg.flit(flit_index) := rslv.hwdata(31 downto 0);
+										--noc_tx_reg.flit(flit_index)(27 downto 24) := x"B"; --§
 										flit_index := flit_index + 1; ---- increase after use and before setting length (index starts at 0, length starts at 1)
 									elsif(flit_index = 4) then
 										-- full packet therefore transmit it
 										noc_tx_reg.len := conv_std_logic_vector(5,3);
 										noc_tx_reg.addr := conv_std_logic_vector(0,4);
 										noc_tx_reg.flit(flit_index) := rslv.hwdata(31 downto 0);
+										--noc_tx_reg.flit(flit_index)(27 downto 24) := x"C"; --§
 										if(tready = '0') then
 											noc_tx_reg.addr := conv_std_logic_vector(3,4); ----- Debug
 											requ <= noc_tx_reg;
@@ -375,6 +377,7 @@ begin
 				tslv.hready := '1';
 				if(acwr = '0' and conv_integer(noc_tx_reg.len) > 1) then
 					noc_tx_reg.flit(2) := rslv.hwdata(31 downto 0);
+					--noc_tx_reg.flit(flit_index)(27 downto 24) := x"D"; --§
 					noc_tx_reg.len := conv_std_logic_vector(3,3);
 					-------------------------------------------!!!
 					if(tready = '0') then
@@ -396,6 +399,7 @@ begin
 			---- finish up last AHB Request -----------------------------------------------
 			if(conv_integer(noc_tx_reg.len) > 1 and noc_tx_reg.flit(0)(15) = '1' and bstate = 1) then
 				noc_tx_reg.flit(flit_index) := rslv.hwdata(31 downto 0);
+				--noc_tx_reg.flit(flit_index)(27 downto 24) := x"E"; --�
 				flit_index := flit_index + 1; ---- increase after use and before setting length (index starts at 0, length starts at 1)
 				noc_tx_reg.len := conv_std_logic_vector(flit_index,3);
 			end if;
