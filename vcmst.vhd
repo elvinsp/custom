@@ -349,6 +349,7 @@ begin
 					else
 						state := 4;
 					end if;
+					flit_index := flit_index + 1;
 				end if;
 			else
 				if(rmst.hresp = "01") then

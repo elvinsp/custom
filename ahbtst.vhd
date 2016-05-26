@@ -318,7 +318,7 @@ begin
 					vaddr := x"00";
 					vincr := 0;
 					vwrite := '0';
-					bstate = 0;
+					bstate := 0;
 				--end if;
 				----  rslv.htrans -----
 			---- tslv.hresp -----

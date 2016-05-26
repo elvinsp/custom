@@ -117,11 +117,11 @@ component vcont is
 	 Generic ( mindex : integer;
 				sindex : integer;
 				cindex : integer;
-				memaddr : integer := 16#600#;
+				memaddr : integer := 16#B00#;
 				memmask : integer := 16#ff0#;
-				ioaddr : integer := 16#B00#;
+				ioaddr : integer := 16#C00#;
 				iomask : integer := 16#ff8#;
-				caddr : integer := 16#B08#;
+				caddr : integer := 16#D0A#;
 				cmask : integer := 16#fff#);
     Port ( res : in  STD_LOGIC;
            clk : in  STD_LOGIC;

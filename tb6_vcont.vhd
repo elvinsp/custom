@@ -68,13 +68,8 @@ BEGIN
 	leon_ahb : ahbctrl       -- AHB arbiter/multiplexer
 				generic map (defmast => 0, split => 1, 
 									rrobin => 1, ioaddr => 16#100#,
-									ioen => 1, nahbm => 2, nahbs => 2)
+									ioen => 1, nahbm => 3, nahbs => 16)
 				port map (rstn, clkm, ahbmi, ahbmo, ahbsi, ahbso);
-	io_ahb : ahbctrl       -- AHB arbiter/multiplexer
-				generic map (defmast => 0, split => 1, 
-									rrobin => 1, ioaddr => 16#100#,
-									ioen => 1, nahbm => 1, nahbs => 5)
-				port map (rstn, clkm, ahb1mi, ahb1mo, ahb1si, ahb1so);
 	leon_mst : vcmst
 		generic map(hindex => 0)
 		port map(rstn, clkm, mst0_rx_ready, mst0_rx_ack, mst0_rx, mst0_tx_ready, mst0_tx_ack, mst0_tx, ahbmi, ahbmo(0));
@@ -82,17 +77,17 @@ BEGIN
 		generic map(mindex => 1, sindex => 0, cindex => 1, memmask => 16#500#, ioaddr => 16#600#, iomask => 16#ffe#, caddr => 16#70a#, cmask => 16#ffe#)
 		port map(rstn, clkm, ahbmi, ahbmo(1), ahbsi, ahbso(0), ahbso(1), slv_rx_ready, slv_rx_ack, slv_rx, slv_tx_ready, slv_tx_ack, slv_tx);
 	io_cont: vcont
-		generic map(mindex => 0, sindex => 0, cindex => 1)
-		port map(rstn, clkm, ahb1mi, ahb1mo(0), ahb1si, ahb1so(0), ahb1so(1), slv_tx_ready, slv_tx_ack, slv_tx, slv_rx_ready, slv_rx_ack, slv_rx);
+		generic map(mindex => 2, sindex => 2, cindex => 3, memmask => 16#b00#, ioaddr => 16#c00#, iomask => 16#ffe#, caddr => 16#d0a#, cmask => 16#ffe#)
+		port map(rstn, clkm, ahbmi, ahbmo(2), ahbsi, ahbso(2), ahbso(3), slv_tx_ready, slv_tx_ack, slv_tx, slv_rx_ready, slv_rx_ack, slv_rx);
 	io_slv0: testreg
-		generic map(hindex => 2, membar => 16#800#, rom => '1')
-		port map(rstn, clkm, ahb1si, ahb1so(2));
+		generic map(hindex => 4, membar => 16#800#, rom => '1')
+		port map(rstn, clkm, ahbsi, ahbso(4));
 	io_slv1: testreg
-		generic map(hindex => 3, membar => 16#400#)
-		port map(rstn, clkm, ahb1si, ahb1so(3));
+		generic map(hindex => 5, membar => 16#400#)
+		port map(rstn, clkm, ahbsi, ahbso(5));
 	io_slv2: testreg
-		generic map(hindex => 4, membar => 16#300#)
-		port map(rstn, clkm, ahb1si, ahb1so(4));
+		generic map(hindex => 6, membar => 16#300#)
+		port map(rstn, clkm, ahbsi, ahbso(6));
 
    -- Clock process definitions
    clk_process :process
@@ -128,18 +123,18 @@ BEGIN
 	mst0_proc: process
 	begin
 		wait for 140 ns;
-		mst0_rx.len <= "010";
+		mst0_rx.len <= "011";
 		mst0_rx.addr <= "0010";
 		mst0_rx.flit(0)(15) <= '1';
 		mst0_rx.flit(0)(14 downto 12) <= "010"; -- size
-		mst0_rx.flit(0)(7 downto 5) <= "000"; -- burst
+		mst0_rx.flit(0)(7 downto 5) <= "001"; -- burst
 		mst0_rx.flit(0)(11 downto 8) <= "1110"; -- hprot
 		mst0_rx.flit(0)(31 downto 28) <= "0010";
 		mst0_rx.flit(0)(2) <= '1';
-		mst0_rx.flit(1) <= x"c0a00004";
+		mst0_rx.flit(1) <= x"d0a00014";
 		mst0_rx.flit(2) <= x"80000008";
-		mst0_rx.flit(3) <= x"40000000";
-		mst0_rx.flit(4) <= x"50000000";
+		mst0_rx.flit(3) <= x"00800000";
+		mst0_rx.flit(4) <= x"20000000";
 		--wait until clkm'event and clkm = '1';
 		mst0_rx_ready <= '1';
 		wait until mst0_rx_ack = '1';
@@ -148,17 +143,18 @@ BEGIN
 		mst0_rx_ready <= '0';
 		wait until clkm'event and clkm = '1';
 		------------------------------------------
-		mst0_rx.len <= "010";
+		mst0_rx.len <= "011";
 		mst0_rx.addr <= "0010";
 		mst0_rx.flit(0)(15) <= '1';
+		mst0_rx.flit(0)(2) <= '1';
 		mst0_rx.flit(0)(14 downto 12) <= "010"; -- size
-		mst0_rx.flit(0)(7 downto 5) <= "000"; -- burst
+		mst0_rx.flit(0)(7 downto 5) <= "001"; -- burst
 		mst0_rx.flit(0)(11 downto 8) <= "1110"; -- hprot
 		mst0_rx.flit(0)(31 downto 28) <= "0010";
-		mst0_rx.flit(1) <= x"c0a00000";--x"c0000024";
-		mst0_rx.flit(2) <= x"00800000";
-		mst0_rx.flit(3) <= x"70000000";
-		mst0_rx.flit(4) <= x"80000000";
+		mst0_rx.flit(1) <= x"d0a00010";--x"c0000024";
+		mst0_rx.flit(2) <= x"87000000";
+		mst0_rx.flit(3) <= x"00800000";
+		mst0_rx.flit(4) <= x"FFFFFFFF";
 		mst0_rx_ready <= '1';
 		wait until mst0_rx_ack = '1';
 		wait until clkm'event and clkm = '1';
@@ -166,15 +162,16 @@ BEGIN
 		mst0_rx_ready <= '0';
 		wait until clkm'event and clkm = '1';
 		------------------------------------------
-		mst0_rx.len <= "011";
+		mst0_rx.len <= "000";
 		mst0_rx.addr <= "0010";
-		mst0_rx.flit(0)(15) <= '1';
+		mst0_rx.flit(0)(15) <= '0';
+		mst0_rx.flit(0)(2) <= '1';
 		mst0_rx.flit(0)(14 downto 13) <= "10";
 		mst0_rx.flit(0)(14 downto 12) <= "010";
 		mst0_rx.flit(0)(7 downto 5) <= "000";
 		mst0_rx.flit(0)(11 downto 8) <= "1110";
 		mst0_rx.flit(0)(31 downto 28) <= "0010";
-		mst0_rx.flit(1) <= x"6aa2fff0";
+		mst0_rx.flit(1) <= x"c0001000";
 		mst0_rx.flit(2) <= x"11111111";
 		mst0_rx.flit(3) <= x"22222222";
 		mst0_rx.flit(4) <= x"44444444";
@@ -186,7 +183,7 @@ BEGIN
 		mst0_rx_ready <= '0';
 		wait until clkm'event and clkm = '1';
 		------------------------------------------
-		mst0_rx.len <= "011";
+		mst0_rx.len <= "001";
 		mst0_rx.addr <= "0010";
 		mst0_rx.flit(0)(15) <= '1';
 		mst0_rx.flit(0)(14 downto 13) <= "10";
@@ -194,7 +191,7 @@ BEGIN
 		mst0_rx.flit(0)(7 downto 5) <= "000";
 		mst0_rx.flit(0)(11 downto 8) <= "1110";
 		mst0_rx.flit(0)(31 downto 28) <= "0010";
-		mst0_rx.flit(1) <= x"6000fff0";
+		mst0_rx.flit(1) <= x"c0000010";
 		mst0_rx.flit(2) <= x"11111111";
 		mst0_rx.flit(3) <= x"22222222";
 		mst0_rx.flit(4) <= x"44444444";
@@ -206,7 +203,7 @@ BEGIN
 		mst0_rx_ready <= '0';
 		wait until clkm'event and clkm = '1';
 		------------------------------------------
-		mst0_rx.len <= "100";
+		mst0_rx.len <= "001";
 		mst0_rx.addr <= "0010";
 		mst0_rx.flit(0)(15) <= '1';
 		mst0_rx.flit(0)(14 downto 13) <= "10";
@@ -214,7 +211,7 @@ BEGIN
 		mst0_rx.flit(0)(7 downto 5) <= "001";
 		mst0_rx.flit(0)(11 downto 8) <= "1110";
 		mst0_rx.flit(0)(31 downto 28) <= "0010";
-		mst0_rx.flit(1) <= x"a0000010";
+		mst0_rx.flit(1) <= x"c0000010";
 		mst0_rx.flit(2) <= x"11111111";
 		mst0_rx.flit(3) <= x"22222222";
 		mst0_rx.flit(4) <= x"44444444";
@@ -226,7 +223,7 @@ BEGIN
 		mst0_rx_ready <= '0';
 		wait until clkm'event and clkm = '1';
 		------------------------------------------
-		mst0_rx.len <= "010";
+		mst0_rx.len <= "000";
 		mst0_rx.addr <= "0010";
 		mst0_rx.flit(0)(15) <= '0';
 		mst0_rx.flit(0)(14 downto 13) <= "10";
@@ -246,6 +243,27 @@ BEGIN
 		mst0_rx_ready <= '0';
 		wait until clkm'event and clkm = '1';
 		------------------------------------------
+		wait for 700 ns;
+		mst0_rx.len <= "011";
+		mst0_rx.addr <= "0010";
+		mst0_rx.flit(0)(15) <= '1';
+		mst0_rx.flit(0)(2) <= '1';
+		mst0_rx.flit(0)(14 downto 12) <= "010"; -- size
+		mst0_rx.flit(0)(7 downto 5) <= "001"; -- burst
+		mst0_rx.flit(0)(11 downto 8) <= "1110"; -- hprot
+		mst0_rx.flit(0)(31 downto 28) <= "0010";
+		mst0_rx.flit(1) <= x"d0a00010";--x"c0000024";
+		mst0_rx.flit(2) <= x"87000000";
+		mst0_rx.flit(3) <= x"00800000";
+		mst0_rx.flit(4) <= x"FFFFFFFF";
+		mst0_rx_ready <= '1';
+		wait until mst0_rx_ack = '1';
+		wait until clkm'event and clkm = '1';
+		mst0_rx <= noc_transfer_none;
+		mst0_rx_ready <= '0';
+		wait until clkm'event and clkm = '1';
+		------------------------------------------
+		
 		wait;
 	end process;
 

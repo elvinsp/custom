@@ -80,7 +80,7 @@ type store is array (0 to 63) of std_logic_vector(31 downto 0);
 signal datastore : store;
 constant storemask : store := (0 => x"ffbfffff", 1 => x"ffffffff", 2 => x"ffffffff", 3 => x"ffffffff", 4 => x"ffffffff", others => (others => '0'));
 constant pagebase : integer := 8;
-signal co_r, co_a, eo_r, eo_a : std_logic;
+signal co_r, co_a, eo_r, eo_a, rca, rca_s : std_logic;
 signal co, eo : noc_transfer_reg;
 
 begin
@@ -162,7 +162,7 @@ begin
 end process vni_proc;
 
 vno_proc: process (clk, res)
-variable no_r, rr, nready, eready : std_logic;
+variable no_r, rr, nready, eready, rcs : std_logic;
 variable mcmp, iocmp, faddr, fmask : std_logic_vector(11 downto 0);
 variable pagenr, maskstart, cstate : integer;
 variable timer : integer;
@@ -189,6 +189,8 @@ begin
 		vcno_r <= '0';
 		vcno <= noc_transfer_none;
 		timer := 0;
+		rcs := '0';
+		rca_s <= '0';
 		slvsave := (others => '0');
 	elsif(clk'event and clk = '1') then
 		if(rr = '1' and vcsi_r = '0') then
@@ -200,6 +202,15 @@ begin
 		end if;
 		if(eo_r = '1') then
 			eready := '1';
+		end if;
+		if(datastore(0)(22) = '1' and cstate = 5) then
+			cstate := 0;
+		end if;
+		if(datastore(4)(30) = '1') then
+			rcs := '0';
+		end if;
+		if(rca = '0') then
+			rca_s <= '0';
 		end if;
 		if(datastore(0)(23) = '1' and datastore(0)(22) = '0') then -- datastore(0)(23) load; datastore(0)(22) load complete
 -- Page Table Load
@@ -246,7 +257,7 @@ begin
 				vcno.addr <= conv_std_logic_vector(5,4);
 			end if;
 			-- no_r --
-		elsif(datastore(0)(22 downto 21) = "11") then -- datastore(0)(21) remote config
+		elsif(datastore(0)(22 downto 21) = "11" and rca = '1' and rca_s = '0') then -- datastore(0)(21) remote config
 			if(no_r = '0') then
 -- Remote Config Ack
 				vcno <= ntr_remote;
@@ -254,14 +265,16 @@ begin
 				vcno.addr <= datastore(0)(19 downto 16);
 				vcno.len <= "001";
 				no_r := '1';
+				rca_s <= '1';
 			end if;
-		elsif(datastore(4)(31) = '1') then -- send remote config
+		elsif(datastore(4)(31) = '1' and rcs = '0') then -- send remote config
 -- Remote Config
 			if(no_r = '0') then
 				vcno <= ntr_remote;
 				vcno.addr <= datastore(4)(27 downto 24);
 				vcno.flit(1) <= datastore(5);
 				no_r := '1';
+				rcs := '1';
 			end if;
 		elsif(vcmi_r = '1' and no_r = '0' and rr = '0') then
 -- Master to Network
@@ -298,10 +311,12 @@ begin
 				if(datastore(pagenr+pagebase+1) /= x"ffffffff") then
 					vcno <= vcsi;
 					vcno.addr <= conv_std_logic_vector(3,4);
-					for I in 31 downto 8 loop
-						-- (page entry and not page mask) or (page mask and haddr)
-						vcno.flit(1)(I) <= (datastore(pagenr+1+pagebase)(I) and datastore(pagebase)(I)) or (not datastore(pagebase)(I) and vcsi.flit(1)(I));
-					end loop;
+					if(datastore(pagenr+pagebase+1) /= x"00000000") then
+						for I in 31 downto 8 loop
+							-- (page entry and not page mask) or (page mask and haddr)
+							vcno.flit(1)(I) <= (datastore(pagenr+1+pagebase)(I) and datastore(pagebase)(I)) or (not datastore(pagebase)(I) and vcsi.flit(1)(I));
+						end loop;
+					end if;
 					no_r := '1';
 				else
 					---- error handling; page non existent
@@ -358,6 +373,7 @@ variable vaddr : std_logic_vector(7 downto 0);
 variable vincr : integer;
 variable vwrite : std_logic;
 variable loadstate : std_logic_vector(4 downto 0);
+variable ntr_ack : std_logic;
 begin
 	if(res = '0') then
 		ahbso <= ahbs_none;
@@ -370,7 +386,11 @@ begin
 		datastore(pagebase) <= x"ffffffff";
 		co_a <= '0';
 		loadstate := (others => '0');
+		rca <= '0';
 	elsif(clk'event and clk = '1') then
+		if(rca_s = '1' and datastore(0)(22) = '1' and datastore(0)(21) = '1') then
+			rca <= '0';
+		end if;
 		---- Remote Input --------------------------------------------------
 		if(co_r = '1') then
 			if(co.flit(0)(31 downto 28) = "0011") then
@@ -405,23 +425,26 @@ begin
 			elsif(co.flit(0)(31 downto 28) = "0100") then
 				datastore(1) <= co.flit(1);
 				datastore(0)(23) <= '1'; -- load page table
+				datastore(0)(22) <= '0';
 				datastore(0)(21) <= '1'; -- remote config active
 				datastore(0)(19 downto 16) <= co.addr;
-			elsif(co.flit(0)(31 downto 28) = "0101") then
+				rca <= '1';
+			elsif(co.flit(0)(31 downto 28) = "0101" and co.addr = datastore(4)(27 downto 24)) then
 				datastore(4)(31) <= '0'; -- deactivate send bit
 				datastore(4)(30) <= '1'; -- remote config completed
-				datastore(4)(27 downto 24) <= "0000";
+				--datastore(4)(27 downto 24) <= "0000";
+				ntr_ack := '1';
 			end if;
 			co_a <= '1';
 		else
 			co_a <= '0';
 		end if;
-		if(loadstate(0) = '1' and loadstate(1) = '1' and loadstate(2) = '1' and loadstate(3) = '1' and loadstate(4) = '1') then
+		if(co_r = '0' and loadstate(0) = '1' and loadstate(1) = '1' and loadstate(2) = '1' and loadstate(3) = '1' and loadstate(4) = '1') then
 			datastore(0)(22) <= '1'; -- load complete
 			datastore(0)(23) <= '0'; -- deactivate load bit
 			loadstate := (others => '0');
 		end if;
-		if(datastore(4)(31) = '1') then
+		if(datastore(4)(31) = '1' and ntr_ack = '0') then
 			datastore(4)(30) <= '0'; -- when send bit is active, complete bit can't
 		end if;
 		---- AHB -----------------------------------------------------------
@@ -636,7 +659,8 @@ begin
 			else
 				tslv.hready := '1';
 			end if;
-		end if;	
+			ntr_ack := '0';
+		end if;		
 		----------------------------------------------------------------------------
 		ahbso <= tslv;
 	end if;
